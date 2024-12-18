@@ -8,6 +8,7 @@ import pytz
 import pickle
 from google.cloud import storage
 from math import ceil
+import numpy as np
 
 # TOML
 with open('./secrets/secrets.toml', 'r') as fr:
@@ -55,6 +56,11 @@ def load_LatLonName():
 # 관리권역 설정
 def load_zone_id(zone): # ★Flask에서 누른 권역에 따라 달라지도록 변경해야 함.★
     zone = 2 # 임시
+    # ★밑의 코드가 찐★
+    # zone = request.args.get('zone', type=int)
+    #     if zone is None:
+    #         return jsonify({"error": "Zone parameter is required"}), 400
+    # 요청 예시 http = GET /stock?zone=2
     table_name = f"zone{zone}_id_list"
     query = text(f"SELECT * FROM {table_name};")
     with engine.connect() as connection:
@@ -100,19 +106,28 @@ class LGBMRegressor:
     
     @staticmethod
     def merge_LGBM_facility_time():
+        # facility CloudSQL에서 불러오기
         facility = LGBMRegressor.load_LGBMfacility()
-        columns = ['Rental_Location_ID', 'bus_stop', 'park', 'school', 'subway', 'riverside', 'month', 'hour', 'is_weekday']
+        columns = ['Rental_Location_ID', 'bus_stop', 'park', 'school', 'subway', 'riverside']
         input_df = pd.DataFrame(facility, columns=columns)
-
-        month, hour, weekday = LGBMRegressor.get_LGBMtime()
-        fill_values = {"month": int(month), "hour": int(hour), "is_weekday": int(weekday)}
-        input_df.fillna(value=fill_values, inplace=True)
         input_df['Rental_Location_ID'] = input_df['Rental_Location_ID'].astype('category')
-        print("input data length", len(input_df))
-        return input_df
+
+        # 사용자 시간 입력 받아오기
+        month, hour, weekday = LGBMRegressor.get_LGBMtime() 
+        time_values = {
+            "month": np.full(len(input_df), month), 
+            "hour": np.full(len(input_df), hour), 
+            "is_weekday": np.full(len(input_df), weekday)
+            }
+        input_df[['month', 'hour', 'weekday']] = pd.DataFrame(time_values)
+        return input_df # 'Rental_Location_ID', 'bus_stop', 'park', 'school', 'subway', 'riverside', 'month', 'hour', 'weekday'
    
     @staticmethod
-    def load_LGBMmodel_from_gcs(bucket_name='bike_data_for_service', source_blob_name='model/241121_model_ver2.pkl'):
+    # 모델 불러오기
+    def load_LGBMmodel_from_gcs(
+            bucket_name='bike_data_for_service', 
+            source_blob_name='model/241121_model_ver2.pkl'
+            ):
         client = storage.Client()
         bucket = client.bucket(bucket_name)
         blob = bucket.blob(source_blob_name)    
@@ -120,112 +135,100 @@ class LGBMRegressor:
         LGBM_model = pickle.loads(file_content)
         return LGBM_model
 
-@app.route('/merge') 
-def LGBMpredict():
-    model = LGBMRegressor.load_LGBMmodel_from_gcs(
-        bucket_name='bike_data_for_service',
-        source_blob_name='model/241121_model_ver2.pkl'
-    )
-    input_df = LGBMRegressor.merge_LGBM_facility_time()
-    
-    predictions = model.predict(input_df)
-    return predictions # type : np.ndarray
-    
-# @app.route('/merge')                                               
-# def merge_LGBMresult():
-#     # 1. input data
-#     input_df = LGBMRegressor.merge_LGBM_facility_time()
-#     # 2. prediction
-#     predictions = LGBMRegressor.LGBMpredict()
-#     predictions = int(ceil(predictions)) # 올림하여 predictions을 정수로 만듦
-#     # 3. stock
-#     merged_result = []
-#     for i in range(len(input_df)):
-#         row = input_df.iloc[i]
-#         predicted_value = predict_bike_response[i]
-#         current_stock = station_current_stock[i]
-#         merged_result.append({
-#             "station_id": row["Rental_Location_ID"],
-#             "predicted_rental": predicted_value,
-#             "stock" : current_stock['stock']
-#         })
+    @staticmethod
+    # 모델 사용해서 대여소별 수요 예측
+    def LGBMpredict():
+        model = LGBMRegressor.load_LGBMmodel_from_gcs(
+            bucket_name='bike_data_for_service',
+            source_blob_name='model/241121_model_ver2.pkl'
+        )
+        input_df = LGBMRegressor.merge_LGBM_facility_time()
+        
+        predictions = model.predict(input_df)
+        return predictions # type : np.ndarray / 소수점 형태
 
-#     query = text("SELECT * FROM 2023_available_stocks;")
-#     merged_result = []
-#     with engine.connect() as connection:
-#         result = connection.execute(query)
-#         for i in range(len(input_df)):
-#         row = input_df.iloc[i]
-#         predicted_value = predictions[i]
-#         current_stock = station_current_stock[i]
-#         merged_result.append({
-#             "station_id": row["Rental_Location_ID"],
-#             "predicted_rental": predicted_value,
-#             "stock" : current_stock['stock']
-#         })
+    @staticmethod
+    @app.route('/stock')
+    def load_LGBMstock():
+        # 해당 관리권역만
+        zone = 2
+        if zone is None:
+            return jsonify({"error": "Zone parameter is required"}), 400
+        zone_id_list = load_zone_id(zone)
+        zone_id_tuple = tuple(row[0] for row in zone_id_list)
+        
+        # 해당 시간만
+        month, day, hour = user_input_datetime()
+        input_date = datetime(2023, month, day)
+        input_time = datetime.strptime(f"{hour}:00:00", "%H:%M:%S").time()
 
-#         for row in result.mappings():
-#             station_LatLonName_dict[row['Station_ID']] = {
-#                 "Latitude": row['Latitude'],
-#                 "Longitude": row['Longitude'],
-#                 "Station_name": row['Station_name']
-#             }
+        # 해당 관리권역 및 시간만 불러와서 append
+        # 2023_available stocks :[{Date, Time, stock, Rental_location_ID, Name_of_the_rental_location}, {...}, ... ]
+        LGBM_stock_list = []
+        try:
+            query = text("""
+                        SELECT * 
+                        FROM 2023_available_stocks 
+                        WHERE Rental_location_ID IN :ids
+                            AND Date = :date
+                            AND Time = :time
+                        """)
+            with engine.connect() as connection:
+                result = connection.execute(query, {"ids": zone_id_tuple, "date": input_date, "time": input_time})
+                for row in result.mappings():
+                    LGBM_stock_list.append(dict(row))
+            return LGBM_stock_list
+
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        
 
 
+    @staticmethod        
+    @app.route('/merge')                                      
+    def merge_LGBMresult():
+        # 1. input data
+        input_df = LGBMRegressor.merge_LGBM_facility_time()
+        # 2. prediction
+        predictions = LGBMRegressor.LGBMpredict()
+        predictions_list = np.ceil(predictions).astype(int).tolist() # 올림하여 predictions을 정수로 만듦
+        # 3. stock
+        LGBM_stock_list = LGBMRegressor.load_LGBMstock()
+                    #         [{
+                            #     "Date": "Wed, 01 Mar 2023 00:00:00 GMT",
+                            #     "Name_of_the_rental_location": "ㅇㄹㅇㄹ",
+                            #     "Rental_location_ID": "ST-1577",
+                            #     "Time": 12,
+                            #     "stock": 0.0
+                    #       },...]
 
+        # 4-1. stock_dict 생성
+        LGBM_dict = {}
+        for item in LGBM_stock_list:
+            rental_location_id = item["Rental_location_ID"]
+            LGBM_dict[rental_location_id] = item
 
-#     current_stock = ModelInput.load_currentstock_latlon(api_key=BIKE_API_KEY, station_file_path=station_file_path)
-    
-#     merged_result = []
-#     for i in range(len(input_dataframe)):
-#         row = input_dataframe.iloc[i]
-#         predicted_value = predict_bike_response[i]
-#         current_stock = station_current_stock[i]
-#         merged_result.append({
-#             "station_id": row["Rental_Location_ID"],
-#             "predicted_rental": predicted_value,
-#             "stock" : current_stock['stock']
-#         })
-#     return merged_result
+        # 4-2. merge all data
+        merged_result = []
+        for i in range(len(input_df)): # 관리권역 1, 2 모두 들어있음
+            input_row = input_df.iloc[i]
+            predicted_value = predictions_list[i]
+            stationid = input_row['Rental_Location_ID']
 
-
-
+            station_item = LGBM_dict.get(stationid, None)
+            if station_item:
+                merged_result.append({
+                    "station_id": stationid,
+                    "predicted_rental": predicted_value,
+                    "stock": station_item["stock"]
+                })
+            else:
+                print(f"{stationid}: in the other zone")
+        return merged_result
 
 if __name__ == "__main__":
     LGBMRegressor_model = LGBMRegressor.load_LGBMmodel_from_gcs(
             bucket_name='bike_data_for_service', 
             source_blob_name='model/241121_model_ver2.pkl'
             )
-
     app.run(debug=True)
-
-    
-    # Flask에 표시할 stock 데이터
-    # def load_LGBMstock():
-    #     month, day, hour = user_input_datetime()
-    #     inputDate = datetime(2023, month, day)
-    #     inputTime = hour
-
-    #     query = text("SELECT * FROM 2023_available_stocks WHERE Date=:inputDate AND Time=:inputTime")
-    #     stock = []
-    #     with engine.connect() as connection:
-    #         result = connection.execute(query, {"inputDate": inputDate, "inputTime": inputTime})
-    #         stock = result.fetchall()
-
-    #     # 여기서 필요한 zone id list만 가져올 것임
-
-    #     @app.route('/')
-    # def load_stock(dt):
-    #     datetime_data = datetime(dt) #datetime형태로 바꾸기
-    #     input_date = datetime_data.date
-    #     input_time = datetime_data.timestamp
-    #     input_stock = stock
-
-    #     engine = create_sqlalchemy_engine()
-    #     query = text("SELECT * FROM 2023_available_stocks WHERE Date='input_date' AND Time='input_time';)
-    #     with engine.connect() as connection:
-    #         result = connection.execute(query)
-    #         stock_df = pd.DataFrame(result.fetchall(), columns=result.keys())
-    #     return jsonify(stock_df)
-
-    #     return stock
