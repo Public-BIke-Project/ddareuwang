@@ -7,27 +7,6 @@ var resultInfoArr = []; // 루트그리기
 var animationMarker; // 애니메이션 마커를 저장할 변수
 var animationInterval; // 애니메이션의 타이머
 
-// 사용자 시간입력 받기
-function displaySelectedOptions(event) {
-    event.preventDefault(); // 폼 제출 방지
-
-    // 선택된 값 가져오기
-    const month = document.getElementById('month').value;
-    const day = document.getElementById('day').value;
-    const hour = document.getElementById('hour').value;
-
-    // 결과를 표시할 요소에 값 업데이트
-    const resultDisplay = document.getElementById('result');
-    resultDisplay.innerHTML = `선택한 날짜와 시간: ${month}월 ${day}일 ${hour}시`;
-}
-
-// 버튼을 다시 표시하는 함수
-function showControls() {
-    const controls = document.querySelector('.controlbotton'); // .controlbotton 요소 선택
-    controls.style.display = 'flex'; // display 속성을 flex로 변경
-}
-
-
 function createCustomIcon(labels, isRevisited) {
     const canvas = document.createElement('canvas');
     canvas.width = 50;
@@ -124,9 +103,8 @@ function initTmap() {
     // 경유지 마커 추가
     addWaypointMarkers();
 
-    // 버튼 이벤트 설정
+    //버튼 이벤트 설정 //
     setupButtons();
-    
 }
 
 // 경유지 마커 추가 함수
@@ -181,7 +159,7 @@ function generateRoute() {
     resultMarkerArr.forEach(marker => marker.setVisible(true));
 
     const headers = {
-        appKey: "6ockLdPQfZatxQctpKLtn5Lg7B5kDO555UzRAx0B"
+        appKey: TMAP_API_KEY
     };
 
     const param = JSON.stringify({
@@ -359,6 +337,8 @@ function resetMap() {
     console.log("지도 초기화 완료");
 }
 
+
+
 // 버튼 이벤트 설정
 function setupButtons() {
     document.getElementById("create_traffic_route_btn").addEventListener("click", function () {
@@ -366,10 +346,10 @@ function setupButtons() {
         generateRoute();
     });
 
-    document.getElementById("reset_map_btn").addEventListener("click", function () {
-        console.log("지도 초기화 버튼 클릭됨");
-        resetMap();
-    });
+    // document.getElementById("reset_map_btn").addEventListener("click", function () {
+    //     console.log("지도 초기화 버튼 클릭됨");
+    //     resetMap();
+    // });
 }
 
 document.addEventListener("DOMContentLoaded", function () {
