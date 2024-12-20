@@ -26,7 +26,6 @@ PORT = secrets['database']['port']
 NAME = secrets['database']['name']
 engine = create_engine(f"mysql+pymysql://{USER}:{PASSWORD}@{HOST}:{PORT}/{NAME}")
 
-
 @app.route('/')
 def index():
     return render_template('nuri_amend.html')
@@ -38,7 +37,7 @@ def user_input_datetime():
     # hour = request.args.get('hour')
     month = 3
     day = 1
-    hour = 12   
+    hour = 23
     return month, day, hour
  
 # 관리권역 설정 -> 대여소 id 불러오기
@@ -106,20 +105,21 @@ class LGBMRegressor:
         # [('ST-1171', 6, 2, 0, 2, 1, None, None, None), ...] 한 줄은 set, 전체는 list
         # 31개의 대여소에 대해서만 불러온 데이터
 
-    #LGBM모델 예측에 필요한 시간 함수
+    #LGBM모델 예측에 필요한 시간 함수 (1시간 timedelta)
     @staticmethod
     def get_LGBMtime():
         kst = pytz.timezone('Asia/Seoul')
-        current_time = datetime.now(kst)
-        year = current_time.year # 현재 년도로 예측
-        month, day, hour = user_input_datetime()    
-        date = datetime(year, month, day)
+        now_kst = datetime.now(kst)
+        kst_1h_timedelta = now_kst + timedelta(hours=1)
+        year = kst_1h_timedelta.year
+        month, day, hour = user_input_datetime()
+        date = datetime(year, month, day, hour) + timedelta(hours=1)
         if date.weekday() < 5:
             weekday = 1
         else:
             weekday = 0
         return month, hour, weekday
-    
+  
     @staticmethod
     def merge_LGBM_facility_time():
         # facility CloudSQL에서 불러오기
@@ -238,8 +238,8 @@ def merge_LGBMresult():
                 "predicted_rental": predicted_value,
                 "stock": station_item["stock"]
             }
-        else:
-            print(f"{stationid}: in the other zone")
+        # else:
+        #     print(f"{stationid}: in the other zone")
             
     return merged_result
 
@@ -294,7 +294,7 @@ class MakeRoute:
         for station_id, station_info in station_status_dict.items():
             if station_info["status"] == "deficient":
                 if station_info["stock"] == 0:
-                    supply_demand.append(-5)  # stock이 아예 없는 경우 5개 필요하다고 입력
+                    supply_demand.append(-3)  # stock이 아예 없는 경우 5개 필요하다고 입력
                 else:
                     supply_demand.append(-station_info["predicted_rental"] -2)  # 예상 수요 +2 만큼 demand로 설정
             elif station_info["status"] == "abundant": # abundant = 예상 수요보다 3개 이상의 stock을 가진 경우
@@ -303,7 +303,9 @@ class MakeRoute:
                 print(f"ERROR! {station_id} : no status info")
         if sum(supply_demand) < 0:
             supply_demand.append((-1) * sum(supply_demand))  # supply_demand에 center 추가
-            print("def make_supply_list로 Center 추가!")
+            print("def make_supply_list로 supply list에 Center 추가!")
+        month, day, hour = user_input_datetime()
+        print(f"{hour}시 supply_demand: ", supply_demand)
         return supply_demand
     
     @staticmethod
@@ -323,12 +325,13 @@ class MakeRoute:
                 break
 
         supply_demand = MakeRoute.make_supply_list()
-        print("supply_demand: ", supply_demand)
-        if sum(supply_demand) < 0: # 대여가능수량이 부족해서 Center에서 출발할 때 자전거를 적재해야 하는 경우
+        if sum(supply_demand[:-1]) < 0: # 대여가능수량이 부족해서 Center에서 출발할 때 자전거를 적재해야 하는 경우
             station_names[len(zone_distance)] = "center"
             print("def station_names()로 station_names에 Center 추가!")
+            print("\nstation_names[len(zone_distance)]: ", station_names[len(zone_distance)])
         return station_names
-    
+
+
 
 if __name__ == "__main__":
     LGBMRegressor_model = LGBMRegressor.load_LGBMmodel_from_gcs(
