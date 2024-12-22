@@ -8,6 +8,9 @@
     <script src="https://code.jquery.com/jquery-3.2.1.min.js"></script>
     <script>
         const TMAP_API_KEY = "{{ tmap_api_key }}"; // Flask에서 appKey 삽입
+        const month = "{{ month }}";
+        const day = "{{ day }}";
+        const hour = "{{ hour }}";
     </script>
     <script src="https://apis.openapi.sk.com/tmap/vectorjs?version=1&appKey={{ tmap_api_key }}"></script>
     <script src="{{ url_for('static', filename='js/test.js') }}"></script>
@@ -40,7 +43,7 @@
         <label for="hour">시 :</label>
         <select id="hour" name="hour" required>
             <option value="" disabled selected>0~23시 선택</option>
-            {% for i in range(0, 24) %}
+            {% for i in range(5, 24) %}
             <option value="{{ i }}">{{ i }}시</option>
             {% endfor %}
         </select>

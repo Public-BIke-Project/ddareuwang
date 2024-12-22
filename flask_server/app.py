@@ -71,9 +71,13 @@ def zone1_page():
         day = request.args.get('day')      # 'day' 입력 필드의 값
         hour = request.args.get('hour')    # 'hour' 입력 필드의 값
         
+        
         if month and day and hour:
             # 폼이 제출되면 버튼을 보이도록 설정
             buttons_visible = True
+            month = str(month).zfill(2)
+            day = str(day).zfill(2)
+            hour = str(hour).zfill(2) # ⭐️⭐️⭐️ 12/22 tmap api startTime 형식 이슈로 return 수정 관련해서 문제있음 말씀해주세요 ⭐️⭐️⭐️ 
         
     # GET 요청 시 HTML 폼 렌더링
     return render_template('zone1.html',buttons_visible = buttons_visible, tmap_api_key = tmap_api_key, month=month, day=day, hour=hour)
@@ -94,9 +98,20 @@ def zone2_page():
         if month and day and hour:
             # 폼이 제출되면 버튼을 보이도록 설정
             buttons_visible = True
+            # 값이 있을 경우 문자열 패딩 추가
+            month = str(month).zfill(2)
+            day = str(day).zfill(2)
+            hour = str(hour).zfill(2) # ⭐️⭐️⭐️ 12/22 tmap api startTime 형식 이슈로 return 수정 관련해서 문제있음 말씀해주세요 ⭐️⭐️⭐️ 
         
     # GET 요청 시 HTML 폼 렌더링
-    return render_template('zone2.html',buttons_visible = buttons_visible, tmap_api_key = tmap_api_key, month=month, day=day, hour=hour)
+    return render_template(
+        'zone2.html',
+        buttons_visible = buttons_visible,
+        tmap_api_key = tmap_api_key,
+        month=month,
+        day=day,
+        hour=hour,  
+        )
 
         # # 정규화
         # normalized_month = month / 12

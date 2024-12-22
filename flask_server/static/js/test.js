@@ -160,60 +160,149 @@ function generateRoute() {
         .then(response => response.json()) // JSON 데이터로 변환
         .then(simple_moves => {
             console.log("경로정보 호출 데이터:", simple_moves);
-    
 
-    // API 데이터 기반으로 viaPoints 생성
-    const viaPoints = simple_moves.map(move => ({
-        viaPointId: move.visit_index.toString(), // 방문 인덱스 (문자열로 변환)
-        viaPointName: move.visit_station_name.toString(),  // 대여소 이름
-        viaX: move.longitude.toString(),       // 경도 (문자열로 변환)
-        viaY: move.latitude.toString(),        // 위도 (문자열로 변환)
-        viaTime: 900                           // 기본 시간 설정
-    }));
+        // API 데이터 기반으로 viaPoints 생성
+        const viaPoints = simple_moves.map(move => ({
+            viaPointId: move.visit_index.toString(), // 방문 인덱스 (문자열로 변환)
+            viaPointName: move.visit_station_id.toString(),  // 대여소 이름
+            viaX: move.longitude.toString(),       // 경도 (문자열로 변환)
+            viaY: move.latitude.toString(),        // 위도 (문자열로 변환)
+            viaTime: 900                           // 기본 시간 설정
+        }));
 
-    const headers = {
-        appKey: TMAP_API_KEY
-    };
+        const headers = {
+            appKey: TMAP_API_KEY
+        };
+        
 
-    const param = JSON.stringify({
-        startName: "출발지",
-        startX: "127.0717955",
-        startY: "37.4957886",
-        startTime: "202411202000",
-        endName: "도착지",
-        endX: "127.0717955",
-        endY: "37.4957886",
-        viaPoints: viaPoints,
-        reqCoordType: "WGS84GEO",
-        resCoordType: "WGS84GEO",
-        searchOption: "2" // 고정: 교통최적+최소시간
-    });
+        const param = JSON.stringify({
+            startName: "출발지",
+            startX: "127.0717955",
+            startY: "37.4957886",
+            startTime: "2024"+month+day+hour+"00", /// ⭐️⭐️⭐️ 사용자 입력시간 ⭐️⭐️⭐️ ///
+            endName: "도착지",
+            endX: "127.0717955",
+            endY: "37.4957886",
+            viaPoints: viaPoints,
+            reqCoordType: "WGS84GEO",
+            resCoordType: "WGS84GEO",
+            searchOption: "2" // 고정: 교통최적+최소시간
+        });
+        console.log("startTime:", "2024" + month + day + hour + "00");
 
-    $.ajax({
-        method: "POST",
-        url: "https://apis.openapi.sk.com/tmap/routes/routeSequential30?version=1&format=json",
-        headers: headers,
-        async: false,
-        contentType: "application/json",
-        data: param,
-        success: function (response) {
-            console.log("API 응답 데이터:", response); // API 응답 데이터 출력
-            displayRoute(response);
-        },
-        error: function (request, status, error) {
-            console.error(`Error: ${request.status}, ${request.responseText}, ${error}`);
-        }
-    });
+        $.ajax({
+            method: "POST",
+            url: "https://apis.openapi.sk.com/tmap/routes/routeSequential30?version=1&format=json",
+            headers: headers,
+            async: false,
+            contentType: "application/json",
+            data: param,
+            success: function (response) {
+                console.log("API 응답 데이터:", response); // API 응답 데이터 출력
+                displayRoute(response);
+            },
+            error: function (request, status, error) {
+                console.error(`Error: ${request.status}, ${request.responseText}, ${error}`);
+            }
+        });
     });
 }
 
+// 시간 포맷 함수 -- 필수
+function formatTime(rawTime) {
+    if (!rawTime || rawTime.length !== 14) return "정보 없음"; // 시간 데이터가 없거나 길이가 다르면 처리
+    const hour = rawTime.slice(8, 10); // 시간 추출
+    const minute = rawTime.slice(10, 12); // 분 추출
+    return `${hour}:${minute}`; // HH:mm 형식으로 반환
+}
+
+
+// tmap 경로 데이터 받아서 스케줄정보, 루트, 자동차 애니메이션 보여주는 함수
 function displayRoute(response) {
-    
     let routeCoordinates = []; // 경로 좌표 배열 (애니메이션용)
-    // 지도에 경로 그리기
+    // tmap 경로 데이터 resultFeatures 정의
     const resultFeatures = response.features;
-    
-    
+
+    // 테이블의 <table> 요소를 선택
+    const table = document.querySelector("#schedule_div table");
+
+    // 기존 데이터를 모두 초기화 (헤더 제외)
+    table.innerHTML = `
+        <tr>
+            <th>시간</th>
+            <th>위치</th>
+            <th>작업</th>
+        </tr>
+    `;
+
+    // 중복 확인용 Set 객체 선언
+    const processedStationsForTable = new Set();
+
+    // 테이블 정보 1. tmap 경로 데이터의 총 거리와 시간 정의
+    const resultData = response.properties;
+    const tDistance = `${(resultData.totalDistance / 1000).toFixed(1)} km`;
+    const tTime = `${(resultData.totalTime / 60).toFixed(0)} 분`;
+
+    // 테이블 정보 1. tmap 경로 데이터의 총 거리와 시간 
+    const summaryRow = document.createElement("tr");
+    summaryRow.innerHTML = `
+        <td>-</td>
+        <td>경로 요약</td>
+        <td>총 거리: ${tDistance}, 총 시간: ${tTime}</td>
+    `;
+    table.appendChild(summaryRow);
+
+    // 테이블 정보 2. 출발지 정보
+    const startFeature = resultFeatures[0]; // 첫 번째 경유지 = 출발지
+    if (startFeature && startFeature.properties) {
+        const arriveTime = formatTime(startFeature.properties.arriveTime) || "-";
+        const startRow = document.createElement("tr");
+        startRow.innerHTML = `
+            <td>${arriveTime}</td>
+            <td>배송센터 출발</td>
+            <td>자전거 15대</td>
+        `;
+        table.appendChild(startRow);
+    }
+
+    // 테이블 정보 3. 경유지 정보 및 작업 정보
+    resultFeatures.forEach((feature, idx) => {
+        const properties = feature.properties;
+        console.log(`Properties ${idx}:`, properties); // properties 데이터
+
+        if (properties && properties.pointType && properties.pointType.startsWith("B")) {
+            const uniqueKey = `${properties.index}-${properties.viaPointName}`;
+        
+            if (!processedStationsForTable.has(uniqueKey)) {
+                processedStationsForTable.add(uniqueKey); // 중복 확인용 Set에 추가
+                const arriveTime = formatTime(properties.arriveTime) || "정보 없음";
+                const completeTime = formatTime(properties.completeTime) || "정보 없음";
+                const viaPointName = properties.viaPointName.replace(/^\[\d+\]\s*/, "");
+                const detailInfo = `다음 대여소 까지: ${(properties.distance / 1000).toFixed(1)} km`;
+        
+                fetch('/moves')
+                    .then(response => response.json())
+                    .then(simple_moves => {
+                        const stationData = simple_moves.find(
+                            station => station.visit_station_id === properties.viaPointName.replace(/^\[\d+\]\s*/, "")
+                        );
+                        const stockInfo = stationData
+                            ? `현 재고: ${stationData.current_stock}\n필요 재고: ${stationData.move_bikes}`
+                            : "";
+        
+                        const waypointRow = document.createElement("tr");
+                        waypointRow.innerHTML = `
+                            <td>${arriveTime} ~ ${completeTime}</td>
+                            <td>${viaPointName}</td>
+                            <td>${stockInfo}<br>${detailInfo}</td>
+                        `;
+                        table.appendChild(waypointRow);
+                });
+            }
+        }
+    });
+
+    // tmap 경로 데이터 그리기
     resultFeatures.forEach(feature => {
 
         if (feature.geometry.type === "LineString") {
@@ -234,6 +323,18 @@ function displayRoute(response) {
             routeCoordinates = routeCoordinates.concat(drawInfoArr);
         }
     });
+
+    const endFeature = resultFeatures[resultFeatures.length - 1]; // 마지막 경유지 = 도착지
+    if (endFeature && endFeature.properties) {
+        const completeTime = formatTime(endFeature.properties.completeTime) || "-";
+        const endRow = document.createElement("tr");
+        endRow.innerHTML = `
+            <td>${completeTime}</td>
+            <td>배송센터 도착</td>
+            <td>-</td>
+        `;
+        table.appendChild(endRow);
+    }    
     // 경로 애니메이션 시작
     startRouteAnimation(routeCoordinates);
 } 
