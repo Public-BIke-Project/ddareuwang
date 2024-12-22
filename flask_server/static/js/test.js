@@ -3,6 +3,7 @@ var marker_s, marker_e, waypoint;
 var resultMarkerArr = [];
 var bikeMarkers = []; // 따릉이
 const waypointVisits = {}; // 중복방문
+var waypoints = []; // api 마커와 루트 경유지
 var resultInfoArr = []; // 루트그리기
 var animationMarker; // 애니메이션 마커를 저장할 변수
 var animationInterval; // 애니메이션의 타이머
@@ -105,58 +106,70 @@ function initTmap() {
 
     //버튼 이벤트 설정 //
     setupButtons();
+    
 }
-
 // 경유지 마커 추가 함수
 function addWaypointMarkers() {
-    const waypoints = [
-        { lat: 37.516811, lng: 127.040474, index: "1", label:'ST-963'}, //ST-963 37.516811	127.040474
-        { lat: 37.512810, lng: 127.026367, index: "2", label:'ST-3208'}, //ST-3208 37.512810	127.026367
-        { lat: 37.516811, lng: 127.040474, index: "3", label:'ST-963'}, //ST-962 37.517590	127.035027  
-        { lat: 37.518639, lng: 127.035400, index: "4", label:'ST-961'}, //ST-961 37.518639	127.035400
-        { lat: 37.515888, lng: 127.066200, index: "5", label:'ST-784'}, //ST-784 37.515888	127.066200
-        { lat: 37.517773, lng: 127.043022, index: "6", label:'ST-786'}, //ST-786 37.517773	127.043022
-        { lat: 37.509586, lng: 127.040909, index: "7", label:'ST-1366'}, //ST-1366 37.509586	127.040909
-        { lat: 37.509785, lng: 127.042770, index: "8", label:'ST-2882'}, //ST-2882 37.509785	127.042770
-        { lat: 37.506367, lng: 127.034523, index: "9", label:'ST-1246'}, //ST-1246 37.506367	127.034523
-        { lat: 37.505703, lng: 127.029198, index: "10", label:'ST-3108'}//ST-3108 37.505703	127.029198
-         
-    ];
-   // 각 대여소별 방문 순서 추적
-    waypoints.forEach((waypoint) => {
-        if (!waypointVisits[waypoint.label]) {
-            waypointVisits[waypoint.label] = [];
-        }
-        waypointVisits[waypoint.label].push(waypoint.index);
-    });
-    waypoints.forEach((waypoint) => {
-        const labels = waypointVisits[waypoint.label];
-        const isRevisited = labels.length > 1;
+    fetch('/moves')
+        .then(response => response.json())
+        .then(simple_moves => {
+            console.log("마커추가api 데이터:", simple_moves);
 
-        // console.log("Labels array:", labels); // 배열 내용 확인
-        // console.log("First label:", labels[0]); // 첫 번째 레이블 확인
-        // console.log("Second label:", labels[1]); // 두 번째 레이블 확인
-        // console.log("Is revisited:", isRevisited);
+            // 필요한 데이터만 waypoints 배열에 담기
+            const waypoints = simple_moves.map(move => ({
+                lat: move.latitude.toString(),               // 위도
+                lng: move.longitude.toString(),             // 경도
+                index: move.visit_index.toString(),         // 방문 인덱스
+                label: move.visit_station_id.toString()     // 대여소 ID
+            }));
+        
+            console.log("필터링된 waypoints 데이터:", waypoints);
+            // 각 대여소별 방문 순서 추적
+            waypoints.forEach((waypoint) => {
+                if (!waypointVisits[waypoint.label]) {
+                    waypointVisits[waypoint.label] = [];
+                }
+                waypointVisits[waypoint.label].push(waypoint.index);
+            });
+            
+            // 경유지에 마커 추가
+            waypoints.forEach((waypoint) => {
+                const labels = waypointVisits[waypoint.label];
+                const isRevisited = labels.length > 1;
 
-        const marker = new Tmapv3.Marker({
-            position: new Tmapv3.LatLng(waypoint.lat, waypoint.lng), // 중심 좌표 설정
-            anchor : "center",
-            icon: createCustomIcon(labels,isRevisited), // 사용자 지정 아이콘
-            iconSize: new Tmapv3.Size(60, 110), // 아이콘 크기 설정
-            zIndex: 1000,
-            visible : false,
-            map: map // 마커가 표시될 지도 설정
+                const marker = new Tmapv3.Marker({
+                    position: new Tmapv3.LatLng(waypoint.lat, waypoint.lng), // 중심 좌표 설정
+                    anchor : "center",
+                    icon: createCustomIcon(labels,isRevisited), // 사용자 지정 아이콘
+                    iconSize: new Tmapv3.Size(60, 110), // 아이콘 크기 설정
+                    zIndex: 1000,
+                    visible : false,
+                    map: map // 마커가 표시될 지도 설정
+                });
+            resultMarkerArr.push(marker); // 마커를 배열에 추가
         });
-        resultMarkerArr.push(marker); // 마커를 배열에 추가
-    });
+    })
 }
 
-
-
-// 루트 생성 함수
+// 경로 tmap 교통정보 호출 함수
 function generateRoute() {
     // 마커를 표시
     resultMarkerArr.forEach(marker => marker.setVisible(true));
+
+    fetch('/moves') // 올바른 fetch 호출
+        .then(response => response.json()) // JSON 데이터로 변환
+        .then(simple_moves => {
+            console.log("경로정보 호출 데이터:", simple_moves);
+    
+
+    // API 데이터 기반으로 viaPoints 생성
+    const viaPoints = simple_moves.map(move => ({
+        viaPointId: move.visit_index.toString(), // 방문 인덱스 (문자열로 변환)
+        viaPointName: move.visit_station_name.toString(),  // 대여소 이름
+        viaX: move.longitude.toString(),       // 경도 (문자열로 변환)
+        viaY: move.latitude.toString(),        // 위도 (문자열로 변환)
+        viaTime: 900                           // 기본 시간 설정
+    }));
 
     const headers = {
         appKey: TMAP_API_KEY
@@ -170,19 +183,7 @@ function generateRoute() {
         endName: "도착지",
         endX: "127.0717955",
         endY: "37.4957886",
-        viaPoints: [
-            { viaPointId: "1", viaPointName:'ST-963',viaX: "127.040474", viaY: "37.516811", viaTime : 900}, //ST-963 37.516811	127.040474
-            { viaPointId: "2", viaPointName:'ST-3208',viaX: "127.026367", viaY: "37.512810", viaTime : 900}, //ST-3208 37.512810	127.026367
-            { viaPointId: "3", viaPointName:'ST-963',viaX: "127.040474", viaY: "37.516811", viaTime : 900}, //ST-962 37.517590	127.035027  
-            { viaPointId: "4", viaPointName:'ST-961',viaX: "127.035400", viaY: "37.518639", viaTime : 900}, //ST-961 37.518639	127.035400
-            { viaPointId: "5", viaPointName:'ST-784',viaX: "127.066200", viaY: "37.515888", viaTime : 900}, //ST-784 37.515888	127.066200
-            { viaPointId: "6", viaPointName:'ST-786',viaX: "127.043022", viaY: "37.517773", viaTime : 900}, //ST-786 37.517773	127.043022
-            { viaPointId: "7", viaPointName:'ST-1366',viaX: "127.040909", viaY: "37.509586", viaTime : 900}, //ST-1366 37.509586	127.040909
-            { viaPointId: "8", viaPointName:'ST-2882',viaX: "127.042770", viaY: "37.509785", viaTime : 900}, //ST-2882 37.509785	127.042770
-            { viaPointId: "9", viaPointName:'ST-1246',viaX: "127.034523", viaY: "37.506367",viaTime : 900}, //ST-1246 37.506367	127.034523
-            { viaPointId: "10", viaPointName:'ST-3108',viaX: "127.029198", viaY: "37.505703", viaTime : 900}//ST-3108 37.505703	127.029198
-           
-        ],
+        viaPoints: viaPoints,
         reqCoordType: "WGS84GEO",
         resCoordType: "WGS84GEO",
         searchOption: "2" // 고정: 교통최적+최소시간
@@ -203,11 +204,16 @@ function generateRoute() {
             console.error(`Error: ${request.status}, ${request.responseText}, ${error}`);
         }
     });
+    });
 }
+
 function displayRoute(response) {
+    
     let routeCoordinates = []; // 경로 좌표 배열 (애니메이션용)
     // 지도에 경로 그리기
     const resultFeatures = response.features;
+    
+    
     resultFeatures.forEach(feature => {
 
         if (feature.geometry.type === "LineString") {
