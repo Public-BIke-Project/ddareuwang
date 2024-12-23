@@ -1,12 +1,14 @@
-from flask import Flask, jsonify, render_template, request, session
+from flask import Flask, jsonify, render_template, request
 from sqlalchemy import create_engine, text
-import csv
 import json
 import pandas as pd
 from datetime import datetime, timedelta
 import toml
-import logging
+import pytz
 import pickle
+from google.cloud import storage
+from math import ceil
+import numpy as np
 
 # TOML
 with open('./secrets/secrets.toml', 'r') as fr:
@@ -24,13 +26,9 @@ PORT = secrets['database']['port']
 NAME = secrets['database']['name']
 engine = create_engine(f"mysql+pymysql://{USER}:{PASSWORD}@{HOST}:{PORT}/{NAME}")
 
-
-# # 엔진 생성
-# engine = init_connection_pool()
-
 @app.route('/')
-def home():
-    return render_template('nuri_amend.html')  # templates/index.html 파일을 서빙
+def index():
+    return render_template('nuri_amend.html')
 
 # 입력한 DateTime 불러오기
 def user_input_datetime():
@@ -41,7 +39,7 @@ def user_input_datetime():
     day = 1
     hour = 23
     return month, day, hour
-
+ 
 # 관리권역 설정 -> 대여소 id 불러오기
 def load_zone_id(zone): # ★Flask에서 누른 권역에 따라 달라지도록 변경해야 함.★
     zone = 2 # 임시
@@ -57,108 +55,27 @@ def load_zone_id(zone): # ★Flask에서 누른 권역에 따라 달라지도록
         zone_id_list = result.fetchall()
     return zone_id_list
 
-# 1권역 페이지 ###### 폼 제출 후 zone2로 넘어가는 이슈 해결 필요 #######
+# 1권역 페이지
 @app.route('/zone1')
 def zone1_page():
     tmap_api_key = secrets['api_keys']['tmap_api_key']
-    # 기본값 설정
-    month = None
-    day = None
-    hour = None
-    buttons_visible = False    
-    if request.args:  # 사용자가 폼을 제출했을 때
-        month = request.args.get('month')  # 'month' 입력 필드의 값
-        day = request.args.get('day')      # 'day' 입력 필드의 값
-        hour = request.args.get('hour')    # 'hour' 입력 필드의 값
-        
-        
-        if month and day and hour:
-            # 폼이 제출되면 버튼을 보이도록 설정
-            buttons_visible = True
-            month = str(month).zfill(2)
-            day = str(day).zfill(2)
-            hour = str(hour).zfill(2) # ⭐️⭐️⭐️ 12/22 tmap api startTime 형식 이슈로 return 수정 관련해서 문제있음 말씀해주세요 ⭐️⭐️⭐️ 
-        
-    # GET 요청 시 HTML 폼 렌더링
-    return render_template('zone1.html',buttons_visible = buttons_visible, tmap_api_key = tmap_api_key, month=month, day=day, hour=hour)
+    return render_template('zone1.html',tmap_api_key = tmap_api_key)
 
-@app.route('/zone2', methods=['GET'])
+@app.route('/zone2')
 def zone2_page():
     tmap_api_key = secrets['api_keys']['tmap_api_key']
-    # 기본값 설정
-    month = None
-    day = None
-    hour = None
-    buttons_visible = False    
-    if request.args:  # 사용자가 폼을 제출했을 때
-        month = request.args.get('month')  # 'month' 입력 필드의 값
-        day = request.args.get('day')      # 'day' 입력 필드의 값
-        hour = request.args.get('hour')    # 'hour' 입력 필드의 값
-        
-        if month and day and hour:
-            # 폼이 제출되면 버튼을 보이도록 설정
-            buttons_visible = True
-            # 값이 있을 경우 문자열 패딩 추가
-            month = str(month).zfill(2)
-            day = str(day).zfill(2)
-            hour = str(hour).zfill(2) # ⭐️⭐️⭐️ 12/22 tmap api startTime 형식 이슈로 return 수정 관련해서 문제있음 말씀해주세요 ⭐️⭐️⭐️ 
-        
-    # GET 요청 시 HTML 폼 렌더링
+    buttons_visible = True
+    route_generated = True 
+    month, day, hour = user_input_datetime()
     return render_template(
         'zone2.html',
-        buttons_visible = buttons_visible,
-        tmap_api_key = tmap_api_key,
-        month=month,
-        day=day,
-        hour=hour,  
+        buttons_visible = buttons_visible, 
+        tmap_api_key = tmap_api_key, 
+        month=month, 
+        day=day, 
+        hour=hour,
+        route_generated=route_generated
         )
-
-        # # 정규화
-        # normalized_month = month / 12
-        # normalized_day = day / 31
-        # normalized_hour = hour / 24
-
-        # # 동적으로 대여소 ID 조회
-        # try:
-        #     with engine.connect() as connection:
-        #         # 대여소 ID 조회
-        #         column_query = text("""
-        #             SHOW COLUMNS
-        #             FROM LSTM_data_for_forecast
-        #             WHERE Field LIKE 'ST-%'
-        #         """)
-        #         columns_result = connection.execute(column_query)
-        #         station_columns = [row['Field'] for row in columns_result]
-
-        #         # 동적으로 SELECT 쿼리 작성
-        #         select_query = f"""
-        #             SELECT {', '.join(station_columns)}
-        #             FROM LSTM_data_for_forecast
-        #             WHERE month = :normalized_month
-        #               AND day = :normalized_day
-        #               AND hour = :normalized_hour
-        #         """
-
-        #         # 쿼리 실행
-        #         result = connection.execute(text(select_query), {
-        #             'normalized_month': normalized_month,
-        #             'normalized_day': normalized_day,
-        #             'normalized_hour': normalized_hour
-        #         })
-
-        #         # 결과를 JSON으로 반환
-        #         data = [dict(row) for row in result]
-
-        #         if data:
-        #             print("\nsuccess!")
-        #             print("\ndata!",data)
-        #             return jsonify(data)
-        #         else:
-        #             return "No data found for the given inputs.", 404
-
-        # except Exception as e:
-        #     print(f"Database error: {e}")
-        #     return "Error connecting to the database.", 500
 
 # 위도 경도 데이터 
 def load_LatLonName():
@@ -173,7 +90,9 @@ def load_LatLonName():
                 "Station_name": row['Station_name']
             }
     return station_LatLonName_dict # ★여기 한글 깨지는거 수정해야 함.★
- 
+
+
+
 class LGBMRegressor:
     # LGBM모델에 사용되는 input dataframe과 주변시설 정보 불러오기
     @staticmethod
@@ -412,124 +331,7 @@ class MakeRoute:
             print("\nstation_names[len(zone_distance)]: ", station_names[len(zone_distance)])
         return station_names
 
-@app.route('/moves', methods=['GET'])
-def get_simple_moves():
-    print("클라이언트에서 /moves 요청 도착") 
 
-    simple_moves = [
-        {
-            "visit_index": 1,
-            "visit_station_id": "ST-963",
-            "visit_station_name": "언주역4번출구",
-            "station_visit_count": 1,
-            "latitude": 37.501228,
-            "longitude": 127.050362,
-            "status": "abundant",
-            "current_stock": 17,
-            "move_bikes": 5
-        },
-        {
-            "visit_index": 2,
-            "visit_station_id": "ST-3208",
-            "visit_station_name": "강남역2번출구",
-            "station_visit_count": 1,
-            "latitude": 37.512810,
-            "longitude": 127.026367,
-            "status": "deficient",
-            "current_stock": 0,
-            "move_bikes": 8
-        },
-        {
-            "visit_index": 3,
-            "visit_station_id": "ST-963",
-            "visit_station_name": "언주역4번출구",
-            "station_visit_count": 1,
-            "latitude": 37.501228,
-            "longitude": 127.050362,
-            "status": "abundant",
-            "current_stock": 12,
-            "move_bikes": 4
-        },
-        {
-            "visit_index": 4,
-            "visit_station_id": "ST-961",
-            "visit_station_name": "강남역2번출구",
-            "station_visit_count": 1,
-            "latitude": 37.518639,
-            "longitude": 127.035400,
-            "status": "deficient",
-            "current_stock": 0,
-            "move_bikes": 8
-        },
-        {
-            "visit_index": 5,
-            "visit_station_id": "ST-784",
-            "visit_station_name": "강남역2번출구",
-            "station_visit_count": 1,
-            "latitude": 37.515888,
-            "longitude": 127.066200,
-            "status": "deficient",
-            "current_stock": 0,
-            "move_bikes": 8
-        },
-        {
-            "visit_index": 6,
-            "visit_station_id": "ST-786",
-            "visit_station_name": "강남역2번출구",
-            "station_visit_count": 1,
-            "latitude": 37.517773,
-            "longitude": 127.043022,
-            "status": "deficient",
-            "current_stock": 0,
-            "move_bikes": 8
-        },
-        {
-            "visit_index": 7,
-            "visit_station_id": "ST-1366",
-            "visit_station_name": "강남역2번출구",
-            "station_visit_count": 1,
-            "latitude": 37.509586,
-            "longitude": 127.040909,
-            "status": "deficient",
-            "current_stock": 0,
-            "move_bikes": 8
-        },
-        {
-            "visit_index": 8,
-            "visit_station_id": "ST-2882",
-            "visit_station_name": "강남역2번출구",
-            "station_visit_count": 1,
-            "latitude": 37.509785,
-            "longitude": 127.042770,
-            "status": "deficient",
-            "current_stock": 0,
-            "move_bikes": 8
-        },
-        {
-            "visit_index": 9,
-            "visit_station_id": "ST-1246",
-            "visit_station_name": "강남역2번출구",
-            "station_visit_count": 1,
-            "latitude": 37.506367,
-            "longitude": 127.034523,
-            "status": "deficient",
-            "current_stock": 0,
-            "move_bikes": 8
-        },
-        {
-            "visit_index": 10,
-            "visit_station_id": "ST-3108",
-            "visit_station_name": "강남역2번출구",
-            "station_visit_count": 1,
-            "latitude": 37.505703,
-            "longitude": 127.029198,
-            "status": "deficient",
-            "current_stock": 0,
-            "move_bikes": 8
-        }
-
-    ]
-    return jsonify(simple_moves)
 
 if __name__ == "__main__":
     LGBMRegressor_model = LGBMRegressor.load_LGBMmodel_from_gcs(
@@ -537,5 +339,3 @@ if __name__ == "__main__":
             source_blob_name='model/241121_model_ver2.pkl'
             )
     app.run(debug=True)
-
-
