@@ -217,11 +217,10 @@ function formatTime(rawTime) {
 }
 
 
-// tmap 경로 데이터 받아서 스케줄정보, 루트, 자동차 애니메이션 보여주는 함수
 function displayRoute(response) {
-    let routeCoordinates = []; // 경로 좌표 배열 (애니메이션용)
-    // tmap 경로 데이터 resultFeatures 정의
-    const resultFeatures = response.features;
+    const resultFeatures = response.features; // 경로 및 포인트 정보
+    const routeCoordinates = []; // 경로 좌표 배열 (애니메이션용)
+    const processedStationsForTable = new Set(); // 중복 확인용 Set 객체
 
     // 테이블의 <table> 요소를 선택
     const table = document.querySelector("#schedule_div table");
@@ -235,15 +234,10 @@ function displayRoute(response) {
         </tr>
     `;
 
-    // 중복 확인용 Set 객체 선언
-    const processedStationsForTable = new Set();
-
-    // 테이블 정보 1. tmap 경로 데이터의 총 거리와 시간 정의
+    // 경로 요약 정보 추가
     const resultData = response.properties;
     const tDistance = `${(resultData.totalDistance / 1000).toFixed(1)} km`;
     const tTime = `${(resultData.totalTime / 60).toFixed(0)} 분`;
-
-    // 테이블 정보 1. tmap 경로 데이터의 총 거리와 시간 
     const summaryRow = document.createElement("tr");
     summaryRow.innerHTML = `
         <td>-</td>
@@ -252,8 +246,8 @@ function displayRoute(response) {
     `;
     table.appendChild(summaryRow);
 
-    // 테이블 정보 2. 출발지 정보
-    const startFeature = resultFeatures[0]; // 첫 번째 경유지 = 출발지
+    // 출발지 정보 추가
+    const startFeature = resultFeatures[0];
     if (startFeature && startFeature.properties) {
         const arriveTime = formatTime(startFeature.properties.arriveTime) || "-";
         const startRow = document.createElement("tr");
@@ -265,31 +259,31 @@ function displayRoute(response) {
         table.appendChild(startRow);
     }
 
-    // 테이블 정보 3. 경유지 정보 및 작업 정보
-    resultFeatures.forEach((feature, idx) => {
-        const properties = feature.properties;
-        console.log(`Properties ${idx}:`, properties); // properties 데이터
+    // Flask에서 가져온 경유지 데이터 매칭
+    fetch('/moves')
+        .then(response => response.json())
+        .then(simple_moves => {
+            console.log("simple_moves_API에서 가져온 데이터:", simple_moves);
 
-        if (properties && properties.pointType && properties.pointType.startsWith("B")) {
-            const uniqueKey = `${properties.index}-${properties.viaPointName}`;
-        
-            if (!processedStationsForTable.has(uniqueKey)) {
-                processedStationsForTable.add(uniqueKey); // 중복 확인용 Set에 추가
-                const arriveTime = formatTime(properties.arriveTime) || "정보 없음";
-                const completeTime = formatTime(properties.completeTime) || "정보 없음";
-                const viaPointName = properties.viaPointName.replace(/^\[\d+\]\s*/, "");
-                const detailInfo = `다음 대여소 까지: ${(properties.distance / 1000).toFixed(1)} km`;
-        
-                fetch('/moves')
-                    .then(response => response.json())
-                    .then(simple_moves => {
+            // 경유지 데이터 처리
+            resultFeatures.forEach(feature => {
+                const properties = feature.properties;
+                if (properties && properties.pointType && properties.pointType.startsWith("B")) {
+                    const uniqueKey = `${properties.index}-${properties.viaPointName}`;
+                    if (!processedStationsForTable.has(uniqueKey)) {
+                        processedStationsForTable.add(uniqueKey); // 중복 제거
+                        const arriveTime = formatTime(properties.arriveTime) || "정보 없음";
+                        const completeTime = formatTime(properties.completeTime) || "정보 없음";
+                        const viaPointName = properties.viaPointName.replace(/^\[\d+\]\s*/, "");
+                        const detailInfo = `다음 대여소 까지: ${(properties.distance / 1000).toFixed(1)} km`;
+
                         const stationData = simple_moves.find(
                             station => station.visit_station_id === properties.viaPointName.replace(/^\[\d+\]\s*/, "")
                         );
                         const stockInfo = stationData
                             ? `현 재고: ${stationData.current_stock}\n필요 재고: ${stationData.move_bikes}`
                             : "";
-        
+
                         const waypointRow = document.createElement("tr");
                         waypointRow.innerHTML = `
                             <td>${arriveTime} ~ ${completeTime}</td>
@@ -297,47 +291,48 @@ function displayRoute(response) {
                             <td>${stockInfo}<br>${detailInfo}</td>
                         `;
                         table.appendChild(waypointRow);
-                });
+                    }
+                }
+
+                // 경로 애니메이션 좌표 추가
+                if (feature.geometry.type === "LineString") {
+                    const drawInfoArr = feature.geometry.coordinates.map(coord => {
+                        return new Tmapv3.LatLng(coord[1], coord[0]);
+                    });
+                    routeCoordinates.push(...drawInfoArr);
+
+                    // 지도에 경로 추가
+                    new Tmapv3.Polyline({
+                        path: drawInfoArr,
+                        strokeColor: "#07c2db",
+                        strokeWeight: 6,
+                        direction: true,
+                        map: map
+                    });
+                }
+            });
+
+            // 도착지 정보 추가
+            const endFeature = resultFeatures[resultFeatures.length - 1];
+            if (endFeature && endFeature.properties) {
+                const completeTime = formatTime(endFeature.properties.completeTime) || "-";
+                const endRow = document.createElement("tr");
+                endRow.innerHTML = `
+                    <td>${completeTime}</td>
+                    <td>배송센터 도착</td>
+                    <td>-</td>
+                `;
+                table.appendChild(endRow);
             }
-        }
-    });
 
-    // tmap 경로 데이터 그리기
-    resultFeatures.forEach(feature => {
+            // 경로 애니메이션 시작
+            startRouteAnimation(routeCoordinates);
+        })
+        .catch(error => {
+            console.error("Flask에서 데이터를 가져오는 중 오류 발생:", error);
+        });
+}
 
-        if (feature.geometry.type === "LineString") {
-            const drawInfoArr = feature.geometry.coordinates.map(coord => {
-                return new Tmapv3.LatLng(coord[1], coord[0]);
-
-            });
-
-            const polyline = new Tmapv3.Polyline({
-                path: drawInfoArr,
-                strokeColor: "#07c2db",
-                strokeWeight: 6,
-                direction: true,
-                map: map
-            });
-            resultInfoArr.push(polyline);
-            // 경로 좌표 추가 (애니메이션용)
-            routeCoordinates = routeCoordinates.concat(drawInfoArr);
-        }
-    });
-
-    const endFeature = resultFeatures[resultFeatures.length - 1]; // 마지막 경유지 = 도착지
-    if (endFeature && endFeature.properties) {
-        const completeTime = formatTime(endFeature.properties.completeTime) || "-";
-        const endRow = document.createElement("tr");
-        endRow.innerHTML = `
-            <td>${completeTime}</td>
-            <td>배송센터 도착</td>
-            <td>-</td>
-        `;
-        table.appendChild(endRow);
-    }    
-    // 경로 애니메이션 시작
-    startRouteAnimation(routeCoordinates);
-} 
 
 // 경로 애니메이션 함수
 function startRouteAnimation(routeCoordinates) {
