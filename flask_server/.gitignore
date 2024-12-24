@@ -1,0 +1,14 @@
+#가상환경 폴더
+venv/
+__pycache__/
+
+# 프리젠테이션폴더
+img/
+
+# Secrets
+secrets/
+*.toml
+
+# 대용량파일
+*.xlsx
+*.ai
