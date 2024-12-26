@@ -19,7 +19,7 @@
     <h1>ㅤ</h1>
     <h1>제2권역</h1>
     {% if month and day and hour %}
-    <h2>선택일시: {{ month }}월 {{ day }}일 {{ hour }}시<br></h2>
+    <h2>선택일시: {{ month }}월 {{ day }}일 {{ hour }}시<br>날짜를 재선택하실 경우 시간설정을 다시 해주세요.</h2>
     {% else %}
     <h3>따라와요 서비스는 3월~11월 성수기 내 재배치 효율 상승을 위한 모델로 설계되었습니다.
         <br>작업 날짜를 선택해 주세요.</h3>
@@ -27,7 +27,7 @@
     
     <form action="/zone2" method="GET" class="horizontal-form">
         <label for="month">월 :</label>
-        <select id="month" name="month" required>
+        <select id="month" name="month" required onchange="updateDays()">
             <option value="" disabled selected>3~11월 선택</option>
             {% for month in range(3, 12) %}
             <option value="{{ month }}">{{ month }}월</option>
@@ -47,13 +47,40 @@
             <option value="{{ i }}">{{ i }}시</option>
             {% endfor %}
         </select>
-        <button type="submit">날짜선택</button>
+        <button type="submit">등록하기</button>
         <!-- <div id="controls" class="horizontal-form"> -->
             {% if buttons_visible %}
             <button id="create_traffic_route_btn">루트 생성</button>
             {% endif %}
         <!-- <div> -->
     </form>
+
+    <script>
+    function updateDays() {
+        const month = document.getElementById('month').value; // 선택된 월 가져오기
+        const daySelect = document.getElementById('day'); // 일 선택 요소 가져오기
+        
+        // 월별 최대 날짜 정의
+        const daysInMonth = {
+            1: 31, 2: 28, 3: 31, 4: 30, 5: 31, 6: 30,
+            7: 31, 8: 31, 9: 30, 10: 31, 11: 30, 12: 31
+        };
+
+        // 선택된 월의 최대 날짜
+        const maxDays = daysInMonth[month];
+
+        // 기존 옵션 초기화
+        daySelect.innerHTML = '<option value="" disabled selected>날짜 선택</option>';
+
+        // 새로운 날짜 옵션 추가
+        for (let i = 1; i <= maxDays; i++) {
+            const option = document.createElement('option');
+            option.value = i;
+            option.textContent = `${i}일`;
+            daySelect.appendChild(option);
+        }
+    }
+    </script>
     </div>
     <div class="content-container" id="contentContainer">
         <div id="map_div" style="width:100%; height:850px;"></div>
@@ -65,10 +92,9 @@
                     <th>위치</th>
                     <th>작업</th>
                 </tr>
-                
-                
             </table>
         </div>
     </div>
 </body>
 </html>
+
