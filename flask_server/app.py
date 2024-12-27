@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, render_template, request, redirect, url_for
+from flask import Flask, jsonify, render_template, request, session
 from sqlalchemy import create_engine, text
 import json
 import pandas as pd
@@ -34,12 +34,13 @@ def index():
 @app.route('/zone1')
 def zone1_page():
     tmap_api_key = secrets['api_keys']['tmap_api_key']    # 기본값 설정
-    zone = 'zone1' # ⭐️
+    zone = 'zone1'
     year = None
     month = None
     day = None
     hour = None
-    buttons_visible = False
+    buttons_visible = False    
+
     if request.args:  # 사용자가 폼을 제출했을 때
         kst = pytz.timezone('Asia/Seoul')
         now_kst = datetime.now(kst)
@@ -47,14 +48,15 @@ def zone1_page():
         month = request.args.get('month')  # 'month' 입력 필드의 값
         day = request.args.get('day')      # 'day' 입력 필드의 값
         hour = request.args.get('hour')    # 'hour' 입력 필드의 값
-        month, day , hour = user_input_datetime()
+        month, day , hour = user_input_datetime()        
+        
         if month and day and hour:
             # 폼이 제출되면 버튼을 보이도록 설정
             buttons_visible = True
             year = str(year)
             month = str(month).zfill(2)
-            day = str(day).zfill(2)
-            hour = str(hour).zfill(2)
+            day = str(day).zfill(2)   
+	        hour = str(hour).zfill(2)
     
     zone_id_list = load_zone_id(zone) # ⭐️
     zone_distance = MakeRoute.load_zone_distance(zone) # ⭐️
@@ -78,7 +80,8 @@ def zone2_page():
         month = request.args.get('month')  # 'month' 입력 필드의 값
         day = request.args.get('day')      # 'day' 입력 필드의 값
         hour = request.args.get('hour')    # 'hour' 입력 필드의 값
-        month, day , hour = user_input_datetime()
+        month, day , hour = user_input_datetime()        
+        
         if month and day and hour:
             # 폼이 제출되면 버튼을 보이도록 설정
             buttons_visible = True
@@ -122,6 +125,26 @@ def load_LatLonName():
                 "Station_name": row['Station_name']
             }
     return station_LatLonName_dict # ★여기 한글 깨지는거 수정해야 함.★
+
+def user_input_datetime():
+    month = request.args.get('month')  # 'month' 입력 필드의 값
+    day = request.args.get('day')      # 'day' 입력 필드의 값
+    hour = request.args.get('hour')    # 'hour' 입력 필드의 값
+    return month, day, hour
+
+ 
+# 관리권역 설정 -> 대여소 id 불러오기
+# ★Flask에서 누른 권역에 따라 달라지도록 변경해야 함.★
+@app.route('/selectzone')
+def load_zone_id(zone): 
+    table_name = f"zone{zone[-1]}_id_list"
+    print(table_name)
+    query = text(f"SELECT * FROM {table_name};")
+    with engine.connect() as connection:
+        result = connection.execute(query)
+        zone_id_list = result.fetchall()
+    return zone_id_list
+>>>>>>> Stashed changes
 
 class LGBMRegressor:
     # LGBM모델에 사용되는 input dataframe과 주변시설 정보 불러오기
@@ -345,7 +368,7 @@ class MakeRoute:
         # zone = request.args.get('zone', type=int)
         #     if zone is None:
         #         return jsonify({"error": "Zone parameter is required"}), 400
-        zone_distance = MakeRoute.load_zone_distance(zone)
+B        zone_distance = MakeRoute.load_zone_distance(zone)
 
         station_names = {}
         for i, row in enumerate(zone_distance):
