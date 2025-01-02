@@ -105,15 +105,30 @@ def user_input_datetime():
     day = int(request.args.get('day'))
     hour = int(request.args.get('hour'))
     return month, day, hour
-    
+
 # zone별 대여소ID 불러오기
 def load_zone_id(zone):
     zone_id_list = []
     with open ('./area1_station_id_list.txt', 'r') as fr:
+    # with open (f'./data/{zone}_station_id_list.txt', 'r') as fr:
         lines = fr.readlines()
         for line in lines:
             zone_id_list.append(line.strip())
     return zone_id_list
+
+# 위도 경도 데이터
+def load_LatLonName():
+    station_LatLonName_dict = {}
+    with open('./data/station_latlon.csv', 'r', encoding='utf-8-sig') as fr:
+        reader = csv.DictReader(fr)
+        for row in reader:
+            station_LatLonName_dict[row['Station_ID']] = {
+                "Latitude": row['Latitude'],
+                "Longitude": row['Longitude'],
+                "Station_name": row['Station_name']
+            }
+        print("\nstation_LatLonName_dict: ", station_LatLonName_dict)
+        return station_LatLonName_dict # ★여기 한글 깨지는거 수정해야 함.★
 
 #-- LGBM START -----------------------------------------------------------------------------------------------------------------#
 class LGBMRegressor:
@@ -213,21 +228,165 @@ class LGBMRegressor:
             LGBM_stock_list.append(dict(row))
         return LGBM_stock_list
 
-    def load_zone_distance(zone):
-        zone_distance = []
-        with open (f'./data/{zone}_distance.csv', 'r') as fr:
-            lines = fr.readlines()
-            for line in lines:
-                zone_distance.append(line.strip())
+#-- LGBM END -----------------------------------------------------------------------------------------------------------------#
+
+def merge_LGBMresult():
+    # 1. input data
+    input_df = LGBMRegressor.merge_LGBM_facility_time()
+    # 2. prediction
+    predictions = LGBMRegressor.LGBMpredict()
+    predictions_list = np.ceil(predictions).astype(int).tolist() # 올림하여 predictions을 정수로 만듦
+    # 앞에 함수 하나 더 만들어서 LSTM과 앙상블
+    # 3. stock
+    LGBM_stock_list = LGBMRegressor.load_LGBMstock()
+                #         [{
+                        #     "Date": "Wed, 01 Mar 2023 00:00:00 GMT",
+                        #     "Name_of_the_rental_location": "ㅇㄹㅇㄹ",
+                        #     "Rental_location_ID": "ST-1577",
+                        #     "Time": 12,
+                        #     "stock": 0.0
+                #       },...]
+
+    # 4-1. stock_dict 생성
+    LGBM_dict = {}
+    for item in LGBM_stock_list:
+        rental_location_id = item["Rental_location_ID"]
+        LGBM_dict[rental_location_id] = item
+
+    # 4-2. merge all data
+    merged_result = {}    
+    for i in range(len(input_df)):  # 관리권역 1, 2 모두 들어있음
+        input_row = input_df.iloc[i]
+        predicted_value = predictions_list[i]
+        stationid = input_row['Rental_Location_ID']
+
+        station_item = LGBM_dict.get(stationid, None)
+        if station_item:
+            merged_result[stationid] = {
+                "predicted_rental": predicted_value,
+                "stock": station_item["stock"]
+            }
+        # else:
+        #     print(f"{stationid}: in the other zone")
+            
+    return merged_result
+
+def find_station_status():
+    merged_result = merge_LGBMresult()  # dict 형태 {"ST-1561": {"predicted_rental": 0, "stock": 2.0}, ...}
+    for stationid, item in merged_result.items():
+        stock = item["stock"]
+        predicted_rental = item['predicted_rental']
+        status = stock - (predicted_rental + 3) # 예측된 수요량보다 3개 더 많아야 함
+        if status <= 0:
+            merged_result[stationid]["status"] = "deficient"
+        else:
+            merged_result[stationid]["status"] = "abundant"
+    station_status_dict = merged_result
+    return station_status_dict # dict 형태
+
+def load_zone_distance(zone):
+    zone_distance = []
+    with open (f'./data/{zone}_distance.csv', 'r') as fr:
+        lines = fr.readlines()
+        for line in lines:
+            zone_distance.append(line.strip())
             # 리스트형태의 튜플 (각 row는 tuple, 전체는 list)
             # result = [
             #                 (1, 'Alice', 25),
             #                 (2, 'Bob', 30),
             #                 (3, 'Charlie', 35)
             #             ]
-        return zone_distance
+    return zone_distance
 
-#-- LGBM END -----------------------------------------------------------------------------------------------------------------#
+def make_supply_list():
+        station_status_dict = find_station_status()
+        # "ST-1561": {
+        #     "predicted_rental": 0,
+        #     "status": "deficient",
+        #     "stock": 2.0
+        #   },
+        supply_demand = []
+        for station_id, station_info in station_status_dict.items():
+            if station_info["status"] == "deficient":
+                if station_info["stock"] == 0:
+                    supply_demand.append(-3)  # stock이 아예 없는 경우 3개 필요하다고 입력
+                else:
+                    supply_demand.append(-station_info["predicted_rental"] -2)  # 예상 수요 +2 만큼 demand로 설정
+            elif station_info["status"] == "abundant": # abundant = 예상 수요보다 3개 이상의 stock을 가진 경우
+                supply_demand.append(station_info["stock"]) # abundant한 경우: stock 그대로 넣기
+            else:
+                print(f"ERROR! {station_id} : no status info")
+        if sum(supply_demand) < 0:
+            supply_demand.append((-1) * sum(supply_demand))  # supply_demand에 center 추가
+            print("def make_supply_list로 supply list에 Center 추가!")
+        month, day, hour = user_input_datetime()
+        print(f"{hour}시 supply_demand: ", supply_demand)
+        return supply_demand
+
+def station_names(zone):
+        zone_distance = MakeRoute.load_zone_distance(zone)
+        station_names = {}
+        for i, row in enumerate(zone_distance):
+            station_names[i] = row[0] # row[0] = 대여소 ID
+            if i == len(zone_distance) - 1:
+                break
+
+        supply_demand = MakeRoute.make_supply_list()
+        if sum(supply_demand[:-1]) < 0: # 대여가능수량이 부족해서 Center에서 출발할 때 자전거를 적재해야 하는 경우
+            station_names[len(zone_distance)] = "center"
+            print("\ndef station_names()로 station_names에 Center 추가!")
+            print("station_names[len(zone_distance)]: ", station_names[len(zone_distance)])
+        return station_names
+
+def Bike_Redistribution(zone):
+    supply_demand = MakeRoute.make_supply_list()
+    zone_distance = MakeRoute.load_zone_distance(zone)
+    # 데이터 정의
+    supply = supply_demand
+    num_stations = len(supply)
+    cost = zone_distance
+    # 디버깅 코드
+    if num_stations == len(cost):
+        print("\nlen(num_stations)랑 len(cost) 일치!")
+    else:
+        print("\nERROR: len(num_stations)랑 len(cost) 불일치!")
+
+    # 문제 정의
+    problem = pulp.LpProblem("Bike_Redistribution", pulp.LpMinimize)
+
+    # 변수 정의: x_ij는 i에서 j로 이동하는 자전거 수
+    x = pulp.LpVariable.dicts("x", ((i, j) for i in range(num_stations) for j in range(num_stations)),
+                            lowBound=0, cat="Integer")
+
+    # 목표 함수: 총 이동 비용 최소화
+    problem += pulp.lpSum(cost[i][j] * x[i, j] for i in range(num_stations) for j in range(num_stations))
+
+    # 여유 대여소에서 자전거 이동량 제한
+    for i in range(num_stations):
+        if supply[i] > 0:  # 여유 대여소
+            problem += pulp.lpSum(x[i, j] for j in range(num_stations) if i != j) <= supply[i]
+
+    # 부족 대여소의 수요 충족
+    for j in range(num_stations):
+        if supply[j] < 0:  # 부족 대여소
+            problem += pulp.lpSum(x[i, j] for i in range(num_stations) if i != j) >= -supply[j]
+                
+    # 부족 대여소에서 자전거 이동 금지 조건 추가 (새로 추가되는 조건)
+    for i in range(num_stations):
+        if supply[i] < 0:  # 부족 대여소
+            problem += pulp.lpSum(x[i, j] for j in range(num_stations) if i != j) == 0
+
+    # 재고 부족인 경우에만 center(start_station)에서 출발
+    if sum(supply) < 0:
+        start_station = len(num_stations) - 1 #center의 인덱스
+        problem += pulp.lpSum(x[start_station, j] for j in range(num_stations) if j != start_station) >= 1
+        
+    # 문제 해결
+    Bike_Redistribution = problem.solve()
+    solve_status = pulp.LpStatus[problem.status]
+    print("\nStatus:", solve_status)
+
+    return Bike_Redistribution, x, solve_status
 
 # 메인 페이지
 @app.route('/')
@@ -273,6 +432,18 @@ def zone1_page():
 
             zone_distances = LGBMRegressor.load_zone_distance(zone)
             print(f"zone_distances: {zone_distances}")
+
+            # 결과값 추가 가공 메서드 호출
+            processed_data = find_station_status()  # 상태 계산
+            print(f"Processed Station Status:\n{processed_data}")
+
+            # 가공된 결과 확인
+            supply_demand = make_supply_list()  # 수요-공급 리스트 생성
+            print(f"Supply Demand List:\n{supply_demand}")
+
+            # Zone Names 생성
+            station_name_data = station_names(zone)
+            print(f"Station Names:\n{station_name_data}")
 
 
             
