@@ -93,10 +93,30 @@ class LSTM_Bidirectional:
 
         # 4. 모델 예측
         with torch.no_grad():
-            prediction = self.model(input_data)
+            predictions = self.model(input_data)
 
         # 5. 결과 반환
-        return prediction.cpu().numpy()
+        return predictions.cpu().numpy()
+
+
+def filter_target_stations(predictions: np.ndarray, all_stations: list[str], target_stations: list[str]) -> np.ndarray:
+    """
+    LSTM 예측 결과(predictions)에서 
+    target_stations에 해당하는 인덱스만 필터링하여 반환.
+    """
+    for st_id in target_stations:
+        if st_id not in all_stations:
+            raise ValueError(f"[filter_target_stations] 대여소 ID '{st_id}'가 all_stations 리스트에 없습니다.")
+
+    # 1) station_id -> 인덱스 매핑
+    target_indices = [all_stations.index(st) for st in target_stations]
+
+    # 2) 예측에서 해당 인덱스만 추출
+    filtered_pred = predictions[:, target_indices]  # shape: (1, len(target_indices))
+
+    print(f"Filtered prediction shape: {filtered_pred.shape}")
+    return filtered_pred
+
 #-- LSTM END -----------------------------------------------------------------------------------------------------------------#
 
 # 사용자 날짜 및 시간 입력
@@ -217,6 +237,7 @@ class LGBMRegressor:
         for row in results:
             LGBM_stock_list.append(dict(row))
         return LGBM_stock_list
+
 
 #-- LGBM END -----------------------------------------------------------------------------------------------------------------#
 
@@ -497,7 +518,57 @@ def zone2_page():
         project_id, dataset_id, table_id, before168_datetime, target_datetime, device
         )
         print(predictions)
-        session['predictions'] = predictions.tolist()
+
+        # 전체 대여소 ID 리스트 (길이 161)
+        all_stations = [
+        "ST_1171",	"ST_1172",	"ST_1173",	"ST_1174",	"ST_1178",	"ST_1179",	"ST_1180",	
+        "ST_1181",	"ST_1182",	"ST_1184",	"ST_1185",	"ST_1186",	"ST_1245",	"ST_1246",	
+        "ST_1247",	"ST_1248",	"ST_1364",	"ST_1365",	"ST_1407",	"ST_1433",	"ST_1559",	
+        "ST_1561",	"ST_1562",	"ST_1566",	"ST_1568",	"ST_1571",	"ST_1573",	"ST_1574",	
+        "ST_1575",	"ST_1576",	"ST_1577",	"ST_1578",	"ST_1679",	"ST_1703",	"ST_777",	
+        "ST_779",	"ST_782",	"ST_783",	"ST_784",	"ST_786",	"ST_787",	"ST_788",	
+        "ST_790",	"ST_791",	"ST_792",	"ST_793",	"ST_794",	"ST_795",	"ST_796",	
+        "ST_798",	"ST_799",	"ST_801",	"ST_802",	"ST_804",	"ST_806",	"ST_807",	
+        "ST_808",	"ST_809",	"ST_810",	"ST_811",	"ST_812",	"ST_813",	"ST_814",	
+        "ST_815",	"ST_816",	"ST_817",	"ST_819",	"ST_820",	"ST_822",	"ST_823",	
+        "ST_937",	"ST_953",	"ST_956",	"ST_957",	"ST_958",	"ST_959",	"ST_960",	
+        "ST_961",	"ST_962",	"ST_963",	"ST_966",	"ST_1560",	"ST_2690",	"ST_2474",	
+        "ST_2788",	"ST_2837",	"ST_2839",	"ST_2868",	"ST_2869",	"ST_2926",	"ST_3078",	
+        "ST_3096",	"ST_3164",	"ST_3179",	"ST_3185",	"ST_2870",	"ST_2927",	"ST_3066",	
+        "ST_3108",	"ST_3109",	"ST_3112",	"ST_3115",	"ST_3178",	"ST_3254",	"ST_1177",	
+        "ST_2684",	"ST_2847",	"ST_2882",	"ST_3111",	"ST_3243",	"ST_3208",	"ST_3207",	
+        "ST_1366",	"ST_1564",	"ST_1680",	"ST_1882",	"ST_1883",	"ST_1884",	"ST_1888",	
+        "ST_1889",	"ST_1892",	"ST_1893",	"ST_1895",	"ST_1896",	"ST_1897",	"ST_2673",	
+        "ST_2675",	"ST_2677",	"ST_2678",	"ST_2679",	"ST_2680",	"ST_2681",	"ST_2682",	
+        "ST_2685",	"ST_2686",	"ST_2688",	"ST_2689",	"ST_2691",	"ST_2838",	"ST_2867",	
+        "ST_2925",	"ST_3077",	"ST_3079",	"ST_3240",	"ST_3245",	"ST_3268",	"ST_789",	
+        "ST_954",	"ST_1885",	"ST_2907",	"ST_1881",	"ST_2671",	"ST_818",	"ST_2674",	
+        "ST_2676",	"ST_821",	"ST_1879",	"ST_1880",	"ST_1886",	"ST_1891",	"ST_797"
+        ]
+
+        # 31개 필터링 대상
+        target_stations = [
+        "ST_816",	"ST_784",	"ST_1561",	"ST_961",	"ST_809",	"ST_966",	"ST_1562",	
+        "ST_2684",	"ST_817",	"ST_814",	"ST_962",	"ST_811",	"ST_812",	"ST_3115",	
+        "ST_1896",	"ST_1246",	"ST_3164",	"ST_2682",	"ST_959",	"ST_789",   "ST_953",	
+        "ST_960",	"ST_1366",	"ST_2882",	"ST_1568",	"ST_963",	"ST_786",	"ST_3108",
+        "ST_3208",	"ST_1883",	"ST_1577"
+        ]
+        # 1) station_id -> 인덱스 매핑
+        target_indices = []
+        for st_id in target_stations:
+            if st_id in all_stations:
+                idx = all_stations.index(st_id)
+                target_indices.append(idx)
+            else:
+                print("Missing:", st_id)
+
+        print("Original shape:", predictions.shape)  # (1, 161)
+        filtered_predictions = filter_target_stations(predictions, all_stations, target_stations)
+        print("Filtered shape:", filtered_predictions.shape)  # (1, 31)
+        print("Filtered values:", filtered_predictions)
+
+        # session['predictions'] = predictions.tolist()
 
         if month and day and hour:
             # 폼이 제출되면 버튼을 보이도록 설정
