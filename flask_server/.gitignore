@@ -2,17 +2,20 @@
 .venv/
 venv/
 __pycache__/
+.env
 
 # 프리젠테이션폴더
 img/
+../img/
 
 # Secrets
 secrets/
 *.toml
 
 # 대용량파일
+../rental_management_classification.xlsx
 *.xlsx
 *.ai
-
 # 임시파일
+1203.py
 1231_yuna.py

@@ -109,8 +109,7 @@ def user_input_datetime():
 # zone별 대여소ID 불러오기
 def load_zone_id(zone):
     zone_id_list = []
-    with open ('./area1_station_id_list.txt', 'r') as fr:
-    # with open (f'./data/{zone}_station_id_list.txt', 'r') as fr:
+    with open (f'./data/{zone}_station_id_list.txt', 'r') as fr:
         lines = fr.readlines()
         for line in lines:
             zone_id_list.append(line.strip())
@@ -184,7 +183,6 @@ class LGBMRegressor:
     def load_LGBMmodel():
         with open ('./model/241121_model_ver2.pkl', 'rb') as file:
              LGBM_model = pickle.load(file)
-             print(f"Loaded LGBM model: {LGBM_model}")
         return LGBM_model
 
     @staticmethod
@@ -194,7 +192,6 @@ class LGBMRegressor:
         model = LGBM_model
         input_df = LGBMRegressor.merge_LGBM_facility_time()
         predictions = model.predict(input_df)
-        print("\npredictions: ", predictions)
         return predictions # type : np.ndarray / 소수점 형태
 
     @staticmethod 
@@ -207,13 +204,6 @@ class LGBMRegressor:
         input_date = datetime(2023, month, day)
         input_date = str(input_date.strftime('%Y-%m-%d'))
         input_time = int(hour)
-        if input_date == None:
-            print("input_date == None")
-        if input_time == None:
-            print("input_time == None")
-        else:
-            print("\ninput_date: ", input_date)
-            print("\ninput_time: ", input_time)
         LGBM_stock_list = []
         query = f"""
         SELECT * 
@@ -230,7 +220,7 @@ class LGBMRegressor:
 
 #-- LGBM END -----------------------------------------------------------------------------------------------------------------#
 
-def merge_LGBMresult():
+def merge_LGBMresult(zone):
     # 1. input data
     input_df = LGBMRegressor.merge_LGBM_facility_time()
     # 2. prediction
@@ -238,7 +228,7 @@ def merge_LGBMresult():
     predictions_list = np.ceil(predictions).astype(int).tolist() # 올림하여 predictions을 정수로 만듦
     # 앞에 함수 하나 더 만들어서 LSTM과 앙상블
     # 3. stock
-    LGBM_stock_list = LGBMRegressor.load_LGBMstock()
+    LGBM_stock_list = LGBMRegressor.load_LGBMstock(zone)
                 #         [{
                         #     "Date": "Wed, 01 Mar 2023 00:00:00 GMT",
                         #     "Name_of_the_rental_location": "ㅇㄹㅇㄹ",
@@ -271,8 +261,8 @@ def merge_LGBMresult():
             
     return merged_result
 
-def find_station_status():
-    merged_result = merge_LGBMresult()  # dict 형태 {"ST-1561": {"predicted_rental": 0, "stock": 2.0}, ...}
+def find_station_status(zone):
+    merged_result = merge_LGBMresult(zone)  # dict 형태 {"ST-1561": {"predicted_rental": 0, "stock": 2.0}, ...}
     for stationid, item in merged_result.items():
         stock = item["stock"]
         predicted_rental = item['predicted_rental']
@@ -298,8 +288,8 @@ def load_zone_distance(zone):
             #             ]
     return zone_distance
 
-def make_supply_list():
-        station_status_dict = find_station_status()
+def make_supply_list(zone):
+        station_status_dict = find_station_status(zone)
         # "ST-1561": {
         #     "predicted_rental": 0,
         #     "status": "deficient",
@@ -324,14 +314,14 @@ def make_supply_list():
         return supply_demand
 
 def station_names(zone):
-        zone_distance = MakeRoute.load_zone_distance(zone)
+        zone_distance = load_zone_distance(zone)
         station_names = {}
         for i, row in enumerate(zone_distance):
             station_names[i] = row[0] # row[0] = 대여소 ID
             if i == len(zone_distance) - 1:
                 break
 
-        supply_demand = MakeRoute.make_supply_list()
+        supply_demand = make_supply_list(zone)
         if sum(supply_demand[:-1]) < 0: # 대여가능수량이 부족해서 Center에서 출발할 때 자전거를 적재해야 하는 경우
             station_names[len(zone_distance)] = "center"
             print("\ndef station_names()로 station_names에 Center 추가!")
@@ -339,8 +329,8 @@ def station_names(zone):
         return station_names
 
 def Bike_Redistribution(zone):
-    supply_demand = MakeRoute.make_supply_list()
-    zone_distance = MakeRoute.load_zone_distance(zone)
+    supply_demand = make_supply_list(zone)
+    zone_distance = load_zone_distance(zone)
     # 데이터 정의
     supply = supply_demand
     num_stations = len(supply)
@@ -420,25 +410,26 @@ def zone1_page():
             
             # 데이터 병합 및 예측
             input_df = LGBMRegressor.merge_LGBM_facility_time()
-            print(f"Input DataFrame:\n{input_df.head()}")
+            # print(f"Input DataFrame:\n{input_df.head()}")
             
             predictions = LGBMRegressor.LGBMpredict()
-            print(f"LGBM Predictions: {predictions}")
+            print(f"LGBM Predictions: {predictions}") # 31개만 나오고있음
             
             # BigQuery 데이터 가져오기
             print(f"Loading stocks for zone: {zone}")
             stocks = LGBMRegressor.load_LGBMstock(zone)
             print(f"Stocks loaded: {stocks}")
-
-            zone_distances = LGBMRegressor.load_zone_distance(zone)
-            print(f"zone_distances: {zone_distances}")
-
+            merged_result = merge_LGBMresult(zone)
+            print(f"Merged_result: {merged_result}")
             # 결과값 추가 가공 메서드 호출
-            processed_data = find_station_status()  # 상태 계산
+            zone_distances = load_zone_distance(zone)
+            print(f"zone_distances: {zone_distances}")
+            
+            processed_data = find_station_status(zone)  # 상태 계산
             print(f"Processed Station Status:\n{processed_data}")
 
             # 가공된 결과 확인
-            supply_demand = make_supply_list()  # 수요-공급 리스트 생성
+            supply_demand = make_supply_list(zone)  # 수요-공급 리스트 생성
             print(f"Supply Demand List:\n{supply_demand}")
 
             # Zone Names 생성
