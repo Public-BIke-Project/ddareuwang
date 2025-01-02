@@ -10,3 +10,6 @@ img/
 # 대용량파일
 *.xlsx
 *.ai
+
+__pycache__/
+*.pyc

@@ -13,3 +13,6 @@ secrets/
 # 대용량파일
 *.xlsx
 *.ai
+
+# 임시파일
+1231_yuna.py
