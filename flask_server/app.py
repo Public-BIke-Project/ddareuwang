@@ -26,6 +26,45 @@ GOOGLE_CREDENTIALS_PATH = secrets['bigquery']['credentials_file']
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = GOOGLE_CREDENTIALS_PATH
 client = bigquery.Client()
 
+project_id = "multi-final-project"
+dataset_id = "Final_table_NURI"
+table_id = "LSTM_data_for_forecast_cloudsql"
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+ALL_STATIONS = [
+        "ST_1171",	"ST_1172",	"ST_1173",	"ST_1174",	"ST_1178",	"ST_1179",	"ST_1180",	
+        "ST_1181",	"ST_1182",	"ST_1184",	"ST_1185",	"ST_1186",	"ST_1245",	"ST_1246",	
+        "ST_1247",	"ST_1248",	"ST_1364",	"ST_1365",	"ST_1407",	"ST_1433",	"ST_1559",	
+        "ST_1561",	"ST_1562",	"ST_1566",	"ST_1568",	"ST_1571",	"ST_1573",	"ST_1574",	
+        "ST_1575",	"ST_1576",	"ST_1577",	"ST_1578",	"ST_1679",	"ST_1703",	"ST_777",	
+        "ST_779",	"ST_782",	"ST_783",	"ST_784",	"ST_786",	"ST_787",	"ST_788",	
+        "ST_790",	"ST_791",	"ST_792",	"ST_793",	"ST_794",	"ST_795",	"ST_796",	
+        "ST_798",	"ST_799",	"ST_801",	"ST_802",	"ST_804",	"ST_806",	"ST_807",	
+        "ST_808",	"ST_809",	"ST_810",	"ST_811",	"ST_812",	"ST_813",	"ST_814",	
+        "ST_815",	"ST_816",	"ST_817",	"ST_819",	"ST_820",	"ST_822",	"ST_823",	
+        "ST_937",	"ST_953",	"ST_956",	"ST_957",	"ST_958",	"ST_959",	"ST_960",	
+        "ST_961",	"ST_962",	"ST_963",	"ST_966",	"ST_1560",	"ST_2690",	"ST_2474",	
+        "ST_2788",	"ST_2837",	"ST_2839",	"ST_2868",	"ST_2869",	"ST_2926",	"ST_3078",	
+        "ST_3096",	"ST_3164",	"ST_3179",	"ST_3185",	"ST_2870",	"ST_2927",	"ST_3066",	
+        "ST_3108",	"ST_3109",	"ST_3112",	"ST_3115",	"ST_3178",	"ST_3254",	"ST_1177",	
+        "ST_2684",	"ST_2847",	"ST_2882",	"ST_3111",	"ST_3243",	"ST_3208",	"ST_3207",	
+        "ST_1366",	"ST_1564",	"ST_1680",	"ST_1882",	"ST_1883",	"ST_1884",	"ST_1888",	
+        "ST_1889",	"ST_1892",	"ST_1893",	"ST_1895",	"ST_1896",	"ST_1897",	"ST_2673",	
+        "ST_2675",	"ST_2677",	"ST_2678",	"ST_2679",	"ST_2680",	"ST_2681",	"ST_2682",	
+        "ST_2685",	"ST_2686",	"ST_2688",	"ST_2689",	"ST_2691",	"ST_2838",	"ST_2867",	
+        "ST_2925",	"ST_3077",	"ST_3079",	"ST_3240",	"ST_3245",	"ST_3268",	"ST_789",	
+        "ST_954",	"ST_1885",	"ST_2907",	"ST_1881",	"ST_2671",	"ST_818",	"ST_2674",	
+        "ST_2676",	"ST_821",	"ST_1879",	"ST_1880",	"ST_1886",	"ST_1891",	"ST_797"
+        ]
+
+# 31개 필터링 대상
+TARGET_STATIONS = [
+"ST_816",	"ST_784",	"ST_1561",	"ST_961",	"ST_809",	"ST_966",	"ST_1562",	
+"ST_2684",	"ST_817",	"ST_814",	"ST_962",	"ST_811",	"ST_812",	"ST_3115",	
+"ST_1896",	"ST_1246",	"ST_3164",	"ST_2682",	"ST_959",	"ST_789",   "ST_953",	
+"ST_960",	"ST_1366",	"ST_2882",	"ST_1568",	"ST_963",	"ST_786",	"ST_3108",
+"ST_3208",	"ST_1883",	"ST_1577"
+]
 
 @app.route('/')
 def index():
@@ -40,40 +79,122 @@ def zone1_page():
     hour = None
     buttons_visible = False    
 
-    if request.args:
+    if request.args:  # 사용자가 폼을 제출했을 때
         zone = 'zone1'
-        month = request.args.get('month')
-        day = request.args.get('day')   
-        hour = request.args.get('hour')  
+        month = request.args.get('month') # 'month' 입력 필드의 값
+        day = request.args.get('day')    # 'day' 입력 필드의 값
+        hour = request.args.get('hour')   # 'hour' 입력 필드의 값
         month, day , hour = user_input_datetime()
-        zone_id_list = load_zone_id(zone) # ⭐️
-
         print(f"사용자 입력값 - month: {month}, day: {day}, hour: {hour}")
+        
+        zone_id_list = load_zone_id(zone) # ⭐️
+        final_simple_moves = get_simple_moves(zone)
 
-        # zone1_page 렌더링
+        # LSTM -> 168시간 이전 데이터 계산
+        target_datetime = datetime(2024, int(month), int(day), int(hour))  # 예시 연도
+        before168_datetime = target_datetime - timedelta(hours=168)
+        print(f"입력값: {target_datetime}, 168시간 이전: {before168_datetime}")
+
+        project_id = "multi-final-project"
+        dataset_id = "Final_table_NURI"
+        table_id = "LSTM_data_for_forecast_cloudsql"
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+        # LGBM 클래스 메서드 호출
         try:
-            LGBM_time = LGBMRegressor.get_LGBMtime()  # 시간 정보 가져오기
-            input_df = LGBMRegressor.merge_LGBM_facility_time()
+            # LGBM
+            LGBM_time = LGBMRegressor.get_LGBMtime()  # 시간 정보 가져오기           
+            input_df = LGBMRegressor.merge_LGBM_facility_time()    
             predictions = LGBMRegressor.LGBMpredict()
-            stocks = LGBMRegressor.load_LGBMstock(zone)
-            merged_result = merge_result(zone)
+            # LSTM
+            project_id = "multi-final-project"
+            dataset_id = "Final_table_NURI"
+            table_id = "LSTM_data_for_forecast_cloudsql"
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            time_series_data = LSTM_Bidirectional.get_time_series_data(
+                project_id, dataset_id, table_id, before168_datetime, target_datetime
+            )
+            lstm_model = LSTM_Bidirectional(model_path='./model/LSTM_Bidirectional_model_1202.pth') # LSTM 모델 초기화
+            print("LSTM Bidirectional model loaded.")
+            predictions = lstm_model.predict(
+            project_id, dataset_id, table_id, before168_datetime, target_datetime, device
+            )
+            # ensemble
+            stocks = load_stock(zone)
+            merge_result = merge_result(zone)
+            # making route
             zone_distances = load_zone_distance(zone)
             processed_data = find_station_status(zone)
             supply_demand = make_supply_list(zone)
             station_name_data = station_names(zone)
-            Bike_Redistribution, x, solve_status = Bike_Redistribution(zone)
-            results_dict = save_result(zone)
-            simplified_moves = simplify_movements(zone, x, station_name_data)
-            simple_moves = final_route(x, station_name_data)
-            final_simple_moves = get_simple_moves(zone)
 
-            # 버튼 활성화
-            buttons_visible = True  
+            # 전체 대여소 ID 리스트 (길이 161)
+            all_stations = [
+            "ST_1171",	"ST_1172",	"ST_1173",	"ST_1174",	"ST_1178",	"ST_1179",	"ST_1180",	
+            "ST_1181",	"ST_1182",	"ST_1184",	"ST_1185",	"ST_1186",	"ST_1245",	"ST_1246",	
+            "ST_1247",	"ST_1248",	"ST_1364",	"ST_1365",	"ST_1407",	"ST_1433",	"ST_1559",	
+            "ST_1561",	"ST_1562",	"ST_1566",	"ST_1568",	"ST_1571",	"ST_1573",	"ST_1574",	
+            "ST_1575",	"ST_1576",	"ST_1577",	"ST_1578",	"ST_1679",	"ST_1703",	"ST_777",	
+            "ST_779",	"ST_782",	"ST_783",	"ST_784",	"ST_786",	"ST_787",	"ST_788",	
+            "ST_790",	"ST_791",	"ST_792",	"ST_793",	"ST_794",	"ST_795",	"ST_796",	
+            "ST_798",	"ST_799",	"ST_801",	"ST_802",	"ST_804",	"ST_806",	"ST_807",	
+            "ST_808",	"ST_809",	"ST_810",	"ST_811",	"ST_812",	"ST_813",	"ST_814",	
+            "ST_815",	"ST_816",	"ST_817",	"ST_819",	"ST_820",	"ST_822",	"ST_823",	
+            "ST_937",	"ST_953",	"ST_956",	"ST_957",	"ST_958",	"ST_959",	"ST_960",	
+            "ST_961",	"ST_962",	"ST_963",	"ST_966",	"ST_1560",	"ST_2690",	"ST_2474",	
+            "ST_2788",	"ST_2837",	"ST_2839",	"ST_2868",	"ST_2869",	"ST_2926",	"ST_3078",	
+            "ST_3096",	"ST_3164",	"ST_3179",	"ST_3185",	"ST_2870",	"ST_2927",	"ST_3066",	
+            "ST_3108",	"ST_3109",	"ST_3112",	"ST_3115",	"ST_3178",	"ST_3254",	"ST_1177",	
+            "ST_2684",	"ST_2847",	"ST_2882",	"ST_3111",	"ST_3243",	"ST_3208",	"ST_3207",	
+            "ST_1366",	"ST_1564",	"ST_1680",	"ST_1882",	"ST_1883",	"ST_1884",	"ST_1888",	
+            "ST_1889",	"ST_1892",	"ST_1893",	"ST_1895",	"ST_1896",	"ST_1897",	"ST_2673",	
+            "ST_2675",	"ST_2677",	"ST_2678",	"ST_2679",	"ST_2680",	"ST_2681",	"ST_2682",	
+            "ST_2685",	"ST_2686",	"ST_2688",	"ST_2689",	"ST_2691",	"ST_2838",	"ST_2867",	
+            "ST_2925",	"ST_3077",	"ST_3079",	"ST_3240",	"ST_3245",	"ST_3268",	"ST_789",	
+            "ST_954",	"ST_1885",	"ST_2907",	"ST_1881",	"ST_2671",	"ST_818",	"ST_2674",	
+            "ST_2676",	"ST_821",	"ST_1879",	"ST_1880",	"ST_1886",	"ST_1891",	"ST_797"
+            ]
+
+            # 31개 필터링 대상
+            target_stations = [
+            "ST_816",	"ST_784",	"ST_1561",	"ST_961",	"ST_809",	"ST_966",	"ST_1562",	
+            "ST_2684",	"ST_817",	"ST_814",	"ST_962",	"ST_811",	"ST_812",	"ST_3115",	
+            "ST_1896",	"ST_1246",	"ST_3164",	"ST_2682",	"ST_959",	"ST_789",   "ST_953",	
+            "ST_960",	"ST_1366",	"ST_2882",	"ST_1568",	"ST_963",	"ST_786",	"ST_3108",
+            "ST_3208",	"ST_1883",	"ST_1577"
+            ]
+            # 1) station_id -> 인덱스 매핑
+            target_indices = []
+            for st_id in target_stations:
+                if st_id in all_stations:
+                    idx = all_stations.index(st_id)
+                    target_indices.append(idx)
+                else:
+                    print("Missing:", st_id)
+
+            print("Original shape:", predictions.shape)  # (1, 161)
+            filtered_predictions = filter_target_stations(predictions, all_stations, target_stations)
+            print("Filtered shape:", filtered_predictions.shape)  # (1, 31)
+            print("Filtered values:", filtered_predictions)
+
+            # 대여소 ID와 예측값 매핑
+            station_pred_map = {}
+            for i, st_id in enumerate(target_stations):
+                station_pred_map[st_id] = float(filtered_predictions[0, i])
+
+            # 매핑 결과 출력
+            print("\n[대여소 ID → 예측값] 매핑 결과:")
+            for st_id, pred_value in station_pred_map.items():
+                print(f"{st_id}: {pred_value:.4f}")
+
+            # session['predictions'] = predictions.tolist()
+                
+            buttons_visible = True  # 버튼 활성화
         except Exception as e:
             print(f"Error during LGBM processing: {str(e)}")
             predictions = []
             stocks = []
-        
+    
         if month and day and hour:
             # 폼이 제출되면 버튼을 보이도록 설정
             buttons_visible = True
@@ -87,44 +208,108 @@ def zone1_page():
 @app.route('/zone2')
 def zone2_page():
     tmap_api_key = secrets['api_keys']['tmap_api_key']    # 기본값 설정
-    zone = None
+    zone = None # ⭐️
     month = None
     day = None
     hour = None
-    buttons_visible = False    
-
-    if request.args:
+    buttons_visible = False
+    if request.args:  # 사용자가 폼을 제출했을 때
         zone = 'zone2'
-        month = request.args.get('month')
-        day = request.args.get('day')   
-        hour = request.args.get('hour')  
-        month, day , hour = user_input_datetime()
+        month = request.args.get('month')  # 'month' 입력 필드의 값
+        day = request.args.get('day')      # 'day' 입력 필드의 값
+        hour = request.args.get('hour')    # 'hour' 입력 필드의 값
+        month, day , hour = user_input_datetime()        
         zone_id_list = load_zone_id(zone) # ⭐️
-
-        # zone2_page 렌더링
-        try:
-            LGBM_time = LGBMRegressor.get_LGBMtime()  # 시간 정보 가져오기
-            input_df = LGBMRegressor.merge_LGBM_facility_time()
-            predictions = LGBMRegressor.LGBMpredict()
-            stocks = LGBMRegressor.load_LGBMstock(zone)
-            merged_result = merge_result(zone)
-            zone_distances = load_zone_distance(zone)
-            processed_data = find_station_status(zone)
-            supply_demand = make_supply_list(zone)
-            station_name_data = station_names(zone)
-            Bike_Redistribution, x, solve_status = Bike_Redistribution(zone)
-            results_dict = save_result(zone)
-            simplified_moves = simplify_movements(zone, x, station_name_data)
-            simple_moves = final_route(x, station_name_data)
-            final_simple_moves = get_simple_moves(zone)
-
-            # 버튼 활성화
-            buttons_visible = True  
-        except Exception as e:
-            print(f"Error during LGBM processing: {str(e)}")
-            predictions = []
-            stocks = []
+        final_simple_moves = get_simple_moves(zone)
+      
+        # 168시간 이전 데이터 계산
+        target_datetime = datetime(2024, int(month), int(day), int(hour))  # 예시 연도
+        before168_datetime = target_datetime - timedelta(hours=168)
         
+        print(f"입력값: {target_datetime}, 168시간 이전: {before168_datetime}")
+
+        # 빅쿼리에서 데이터 조회
+        project_id = "multi-final-project"
+        dataset_id = "Final_table_NURI"
+        table_id = "LSTM_data_for_forecast_cloudsql"
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+        time_series_data = LSTM_Bidirectional.get_time_series_data(
+            project_id, dataset_id, table_id, before168_datetime, target_datetime
+        )
+        print(f"불러온 데이터:\n{time_series_data}")
+        
+        # LSTM 모델 초기화
+        lstm_model = LSTM_Bidirectional(model_path='./model/LSTM_Bidirectional_model_1202.pth')
+        print("LSTM Bidirectional model loaded.")
+
+        # 예측 수행
+        predictions = lstm_model.predict(
+        project_id, dataset_id, table_id, before168_datetime, target_datetime, device
+        )
+        print(predictions)
+
+        # 전체 대여소 ID 리스트 (길이 161)
+        all_stations = [
+        "ST_1171",	"ST_1172",	"ST_1173",	"ST_1174",	"ST_1178",	"ST_1179",	"ST_1180",	
+        "ST_1181",	"ST_1182",	"ST_1184",	"ST_1185",	"ST_1186",	"ST_1245",	"ST_1246",	
+        "ST_1247",	"ST_1248",	"ST_1364",	"ST_1365",	"ST_1407",	"ST_1433",	"ST_1559",	
+        "ST_1561",	"ST_1562",	"ST_1566",	"ST_1568",	"ST_1571",	"ST_1573",	"ST_1574",	
+        "ST_1575",	"ST_1576",	"ST_1577",	"ST_1578",	"ST_1679",	"ST_1703",	"ST_777",	
+        "ST_779",	"ST_782",	"ST_783",	"ST_784",	"ST_786",	"ST_787",	"ST_788",	
+        "ST_790",	"ST_791",	"ST_792",	"ST_793",	"ST_794",	"ST_795",	"ST_796",	
+        "ST_798",	"ST_799",	"ST_801",	"ST_802",	"ST_804",	"ST_806",	"ST_807",	
+        "ST_808",	"ST_809",	"ST_810",	"ST_811",	"ST_812",	"ST_813",	"ST_814",	
+        "ST_815",	"ST_816",	"ST_817",	"ST_819",	"ST_820",	"ST_822",	"ST_823",	
+        "ST_937",	"ST_953",	"ST_956",	"ST_957",	"ST_958",	"ST_959",	"ST_960",	
+        "ST_961",	"ST_962",	"ST_963",	"ST_966",	"ST_1560",	"ST_2690",	"ST_2474",	
+        "ST_2788",	"ST_2837",	"ST_2839",	"ST_2868",	"ST_2869",	"ST_2926",	"ST_3078",	
+        "ST_3096",	"ST_3164",	"ST_3179",	"ST_3185",	"ST_2870",	"ST_2927",	"ST_3066",	
+        "ST_3108",	"ST_3109",	"ST_3112",	"ST_3115",	"ST_3178",	"ST_3254",	"ST_1177",	
+        "ST_2684",	"ST_2847",	"ST_2882",	"ST_3111",	"ST_3243",	"ST_3208",	"ST_3207",	
+        "ST_1366",	"ST_1564",	"ST_1680",	"ST_1882",	"ST_1883",	"ST_1884",	"ST_1888",	
+        "ST_1889",	"ST_1892",	"ST_1893",	"ST_1895",	"ST_1896",	"ST_1897",	"ST_2673",	
+        "ST_2675",	"ST_2677",	"ST_2678",	"ST_2679",	"ST_2680",	"ST_2681",	"ST_2682",	
+        "ST_2685",	"ST_2686",	"ST_2688",	"ST_2689",	"ST_2691",	"ST_2838",	"ST_2867",	
+        "ST_2925",	"ST_3077",	"ST_3079",	"ST_3240",	"ST_3245",	"ST_3268",	"ST_789",	
+        "ST_954",	"ST_1885",	"ST_2907",	"ST_1881",	"ST_2671",	"ST_818",	"ST_2674",	
+        "ST_2676",	"ST_821",	"ST_1879",	"ST_1880",	"ST_1886",	"ST_1891",	"ST_797"
+        ]
+
+        # 31개 필터링 대상
+        target_stations = [
+        "ST_816",	"ST_784",	"ST_1561",	"ST_961",	"ST_809",	"ST_966",	"ST_1562",	
+        "ST_2684",	"ST_817",	"ST_814",	"ST_962",	"ST_811",	"ST_812",	"ST_3115",	
+        "ST_1896",	"ST_1246",	"ST_3164",	"ST_2682",	"ST_959",	"ST_789",   "ST_953",	
+        "ST_960",	"ST_1366",	"ST_2882",	"ST_1568",	"ST_963",	"ST_786",	"ST_3108",
+        "ST_3208",	"ST_1883",	"ST_1577"
+        ]
+        # 1) station_id -> 인덱스 매핑
+        target_indices = []
+        for st_id in target_stations:
+            if st_id in all_stations:
+                idx = all_stations.index(st_id)
+                target_indices.append(idx)
+            else:
+                print("Missing:", st_id)
+
+        print("Original shape:", predictions.shape)  # (1, 161)
+        filtered_predictions = filter_target_stations(predictions, all_stations, target_stations)
+        print("Filtered shape:", filtered_predictions.shape)  # (1, 31)
+        print("Filtered values:", filtered_predictions)
+
+        # 대여소 ID와 예측값 매핑
+        station_pred_map = {}
+        for i, st_id in enumerate(target_stations):
+            station_pred_map[st_id] = float(filtered_predictions[0, i])
+
+        # 매핑 결과 출력
+        print("\n[대여소 ID → 예측값] 매핑 결과:")
+        for st_id, pred_value in station_pred_map.items():
+            print(f"{st_id}: {pred_value:.4f}")
+
+        # session['predictions'] = predictions.tolist()
+
         if month and day and hour:
             # 폼이 제출되면 버튼을 보이도록 설정
             buttons_visible = True
@@ -134,7 +319,6 @@ def zone2_page():
 
     # GET 요청 시 HTML 폼 렌더링
     return render_template('zone2.html',buttons_visible = buttons_visible, tmap_api_key = tmap_api_key, month=month, day=day, hour=hour)
-
 
 
 #-- LSTM START -----------------------------------------------------------------------------------------------------------------#
@@ -192,7 +376,7 @@ class LSTM_Bidirectional:
         result = query_job.result()
         return result.to_dataframe()
 
-    def predict(self, project_id, dataset_id, table_id, before168_datetime, target_datetime, device):
+    def predict(self, project_id, dataset_id, table_id, device, before168_datetime, target_datetime):
         # 1. BigQuery에서 데이터 가져오기
         df_168hours = self.get_time_series_data(project_id, dataset_id, table_id, before168_datetime, target_datetime)
         # 데이터 타입 변환
@@ -209,10 +393,10 @@ class LSTM_Bidirectional:
             predictions = self.model(input_data)
 
         # 5. 결과 반환
-        return predictions.cpu().numpy()
+        predictions = predictions.cpu().numpy()
+        return predictions
 
-
-def filter_target_stations(predictions: np.ndarray, all_stations: list[str], target_stations: list[str]) -> np.ndarray:
+def filter_target_stations(predictions: np.ndarray, all_stations=ALL_STATIONS, target_stations=TARGET_STATIONS) -> np.ndarray:
     for st_id in target_stations:
         if st_id not in all_stations:
             raise ValueError(f"[filter_target_stations] 대여소 ID '{st_id}'가 all_stations 리스트에 없습니다.")
@@ -225,6 +409,7 @@ def filter_target_stations(predictions: np.ndarray, all_stations: list[str], tar
 
     # print(f"Filtered prediction shape: {filtered_pred.shape}")
     return LSTM_predictions
+
 #-- LSTM END -----------------------------------------------------------------------------------------------------------------#
 
 # 사용자 날짜 및 시간 입력
@@ -324,8 +509,8 @@ class LGBMRegressor:
     
 #-- LGBM END -----------------------------------------------------------------------------------------------------------------#
     
-def ensemble(pred, all_stations, target_stations):
-    LSTM_predictions = filter_target_stations(pred, all_stations, target_stations)
+def ensemble(pred, all_stations=ALL_STATIONS, target_stations=TARGET_STATIONS):
+    LSTM_predictions = filter_target_stations(pred, all_stations=all_stations, target_stations=target_stations)
     LGBM_predictions = LGBMRegressor.LGBMpredict()
 
     ensembled_result = (LSTM_predictions + LGBM_predictions) / 2
@@ -359,13 +544,20 @@ def load_stock(zone):
         stock_list.append(dict(row))
     return stock_list
 
-def merge_result(zone, pred, all_stations, target_stations): # stock과 pred를 합치는 함수
+def merge_result(zone): # stock과 pred를 합치는 함수
     # 1. input data
     input_df = LGBMRegressor.merge_LGBM_facility_time()
+    month, day, hour = user_input_datetime()
+    target_datetime = datetime(2024, int(month), int(day), int(hour))  # 예시 연도
+    before168_datetime = target_datetime - timedelta(hours=168)
+    LSTM_Bidirectional.get_time_series_data(project_id, dataset_id, table_id, before168_datetime, target_datetime)
+    pred = LSTM_Bidirectional.get_time_series_data(project_id, dataset_id, table_id, before168_datetime, target_datetime)
+    all_stations = ALL_STATIONS
+    target_stations = TARGET_STATIONS
     
     # 2. predicted data
     ensembled_result = ensemble(pred, all_stations, target_stations)
-    ensembled_predictions = np.ceil(ensembled_result).astype(int).tolist()# 올림하여 ensembled_result을 정수로 만듦 # list 형태
+    ensembled_predictions = np.ceil(ensembled_result).astype(int).tolist() # 올림하여 ensembled_result을 정수로 만듦 # list 형태
 
     # 3. stock 
     stock_list = load_stock(zone)
@@ -443,7 +635,7 @@ def make_supply_list(zone):
         if sum(supply_demand) < 0:
             supply_demand.append((-1) * sum(supply_demand))  # supply_demand에 center 추가
             print("def make_supply_list로 supply list에 Center 추가!")
-        month, day, hour = user_input_datetime()
+        # month, day, hour = user_input_datetime()
         # print(f"{hour}시 supply_demand: ", supply_demand)
         return supply_demand
 
@@ -640,11 +832,14 @@ def final_route(x, station_names):
         })        
         previous_from_station = from_station
     print(simple_moves)
-    return simple_moves
+    return jsonify(simple_moves)
 
 @app.route('/moves', methods=['GET'])
 def get_simple_moves(zone):
-    Bike_Redistribution, x, solve_status = Bike_Redistribution(zone)
+    supply_demand = make_supply_list(zone)
+    zone_distance = load_zone_distance(zone)
+    station_names = station_names(zone)
+    problem, x, solve_status = Bike_Redistribution(supply_demand, zone_distance, station_names)
     simple_moves = final_route(x, station_names)
     final_simple_moves = jsonify(simple_moves)
     return final_simple_moves
