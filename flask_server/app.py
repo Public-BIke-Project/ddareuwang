@@ -1,6 +1,6 @@
 import os
 from google.cloud import bigquery
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify
+from flask import Flask, render_template, request, session, jsonify
 import pandas as pd
 from datetime import datetime, timedelta
 import toml
@@ -11,6 +11,8 @@ import torch.nn as nn
 from math import ceil
 import numpy as np
 import csv
+import pulp
+from collections import Counter
 
 # secrets.toml 파일 읽기
 secrets = toml.load("./secrets/secrets.toml")
@@ -23,6 +25,117 @@ app.secret_key = secrets['app']['flask_password'] # Flask의 session 사용
 GOOGLE_CREDENTIALS_PATH = secrets['bigquery']['credentials_file']
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = GOOGLE_CREDENTIALS_PATH
 client = bigquery.Client()
+
+
+@app.route('/')
+def index():
+    return render_template('nuri_amend.html')
+
+@app.route('/zone1')
+def zone1_page():
+    tmap_api_key = secrets['api_keys']['tmap_api_key']    # 기본값 설정
+    zone = None
+    month = None
+    day = None
+    hour = None
+    buttons_visible = False    
+
+    if request.args:
+        zone = 'zone1'
+        month = request.args.get('month')
+        day = request.args.get('day')   
+        hour = request.args.get('hour')  
+        month, day , hour = user_input_datetime()
+        zone_id_list = load_zone_id(zone) # ⭐️
+
+        print(f"사용자 입력값 - month: {month}, day: {day}, hour: {hour}")
+
+        # zone1_page 렌더링
+        try:
+            LGBM_time = LGBMRegressor.get_LGBMtime()  # 시간 정보 가져오기
+            input_df = LGBMRegressor.merge_LGBM_facility_time()
+            predictions = LGBMRegressor.LGBMpredict()
+            stocks = LGBMRegressor.load_LGBMstock(zone)
+            merged_result = merge_result(zone)
+            zone_distances = load_zone_distance(zone)
+            processed_data = find_station_status(zone)
+            supply_demand = make_supply_list(zone)
+            station_name_data = station_names(zone)
+            Bike_Redistribution, x, solve_status = Bike_Redistribution(zone)
+            results_dict = save_result(zone)
+            simplified_moves = simplify_movements(zone, x, station_name_data)
+            simple_moves = final_route(x, station_name_data)
+            final_simple_moves = get_simple_moves(zone)
+
+            # 버튼 활성화
+            buttons_visible = True  
+        except Exception as e:
+            print(f"Error during LGBM processing: {str(e)}")
+            predictions = []
+            stocks = []
+        
+        if month and day and hour:
+            # 폼이 제출되면 버튼을 보이도록 설정
+            buttons_visible = True
+            month = str(month).zfill(2)
+            day = str(day).zfill(2)
+            hour = str(hour).zfill(2)
+
+    # GET 요청 시 HTML 폼 렌더링
+    return render_template('zone1.html',buttons_visible = buttons_visible, tmap_api_key = tmap_api_key, month=month, day=day, hour=hour)
+
+@app.route('/zone2')
+def zone2_page():
+    tmap_api_key = secrets['api_keys']['tmap_api_key']    # 기본값 설정
+    zone = None
+    month = None
+    day = None
+    hour = None
+    buttons_visible = False    
+
+    if request.args:
+        zone = 'zone2'
+        month = request.args.get('month')
+        day = request.args.get('day')   
+        hour = request.args.get('hour')  
+        month, day , hour = user_input_datetime()
+        zone_id_list = load_zone_id(zone) # ⭐️
+
+        # zone2_page 렌더링
+        try:
+            LGBM_time = LGBMRegressor.get_LGBMtime()  # 시간 정보 가져오기
+            input_df = LGBMRegressor.merge_LGBM_facility_time()
+            predictions = LGBMRegressor.LGBMpredict()
+            stocks = LGBMRegressor.load_LGBMstock(zone)
+            merged_result = merge_result(zone)
+            zone_distances = load_zone_distance(zone)
+            processed_data = find_station_status(zone)
+            supply_demand = make_supply_list(zone)
+            station_name_data = station_names(zone)
+            Bike_Redistribution, x, solve_status = Bike_Redistribution(zone)
+            results_dict = save_result(zone)
+            simplified_moves = simplify_movements(zone, x, station_name_data)
+            simple_moves = final_route(x, station_name_data)
+            final_simple_moves = get_simple_moves(zone)
+
+            # 버튼 활성화
+            buttons_visible = True  
+        except Exception as e:
+            print(f"Error during LGBM processing: {str(e)}")
+            predictions = []
+            stocks = []
+        
+        if month and day and hour:
+            # 폼이 제출되면 버튼을 보이도록 설정
+            buttons_visible = True
+            month = str(month).zfill(2)
+            day = str(day).zfill(2)
+            hour = str(hour).zfill(2)
+
+    # GET 요청 시 HTML 폼 렌더링
+    return render_template('zone2.html',buttons_visible = buttons_visible, tmap_api_key = tmap_api_key, month=month, day=day, hour=hour)
+
+
 
 #-- LSTM START -----------------------------------------------------------------------------------------------------------------#
 # 모델 클래스 정의
@@ -100,10 +213,6 @@ class LSTM_Bidirectional:
 
 
 def filter_target_stations(predictions: np.ndarray, all_stations: list[str], target_stations: list[str]) -> np.ndarray:
-    """
-    LSTM 예측 결과(predictions)에서 
-    target_stations에 해당하는 인덱스만 필터링하여 반환.
-    """
     for st_id in target_stations:
         if st_id not in all_stations:
             raise ValueError(f"[filter_target_stations] 대여소 ID '{st_id}'가 all_stations 리스트에 없습니다.")
@@ -112,11 +221,10 @@ def filter_target_stations(predictions: np.ndarray, all_stations: list[str], tar
     target_indices = [all_stations.index(st) for st in target_stations]
 
     # 2) 예측에서 해당 인덱스만 추출
-    filtered_pred = predictions[:, target_indices]  # shape: (1, len(target_indices))
+    LSTM_predictions = predictions[:, target_indices]  # shape: (1, len(target_indices))
 
-    print(f"Filtered prediction shape: {filtered_pred.shape}")
-    return filtered_pred
-
+    # print(f"Filtered prediction shape: {filtered_pred.shape}")
+    return LSTM_predictions
 #-- LSTM END -----------------------------------------------------------------------------------------------------------------#
 
 # 사용자 날짜 및 시간 입력
@@ -197,7 +305,7 @@ class LGBMRegressor:
         
         return input_df
         # 'Rental_Location_ID', 'bus_stop', 'park', 'school', 'subway', 'riverside', 'month', 'hour', 'weekday'
-   
+
     @staticmethod
     # 모델 불러오기
     def load_LGBMmodel():
@@ -211,67 +319,78 @@ class LGBMRegressor:
         LGBM_model = LGBMRegressor.load_LGBMmodel()
         model = LGBM_model
         input_df = LGBMRegressor.merge_LGBM_facility_time()
-        predictions = model.predict(input_df)
-        return predictions # type : np.ndarray / 소수점 형태
-
-    @staticmethod 
-    def load_LGBMstock(zone):
-        zone_id_list = load_zone_id(zone)
-        zone_id_tuple = tuple(zone_id_list)
-        
-        # 해당 시간만
-        month, day, hour = user_input_datetime()
-        input_date = datetime(2023, month, day)
-        input_date = str(input_date.strftime('%Y-%m-%d'))
-        input_time = int(hour)
-        LGBM_stock_list = []
-        query = f"""
-        SELECT * 
-        FROM `multi-final-project.Final_table_NURI.2023_available_stocks_fin` 
-        WHERE Date = '{input_date}'
-            AND Time = {input_time} 
-            AND Rental_location_ID IN {zone_id_tuple}
-        """
-        query_job = client.query(query)
-        results = query_job.result()
-        for row in results:
-            LGBM_stock_list.append(dict(row))
-        return LGBM_stock_list
-
-
+        LGBM_predictions = model.predict(input_df)
+        return LGBM_predictions # type : np.ndarray / 소수점 형태
+    
 #-- LGBM END -----------------------------------------------------------------------------------------------------------------#
+    
+def ensemble(pred, all_stations, target_stations):
+    LSTM_predictions = filter_target_stations(pred, all_stations, target_stations)
+    LGBM_predictions = LGBMRegressor.LGBMpredict()
 
-def merge_LGBMresult(zone):
+    ensembled_result = (LSTM_predictions + LGBM_predictions) / 2
+    print("\nensembled_result: ", ensembled_result)
+    return ensembled_result
+
+@staticmethod 
+def load_stock(zone):
+    # 해당 zone id list 불러오기
+    zone_id_list = load_zone_id(zone)
+    zone_id_tuple = tuple(zone_id_list)
+    
+    # 해당 시간만
+    month, day, hour = user_input_datetime()
+    input_date = datetime(2023, month, day)
+    input_date = str(input_date.strftime('%Y-%m-%d'))
+    input_time = int(hour)
+
+    query = f"""
+    SELECT * 
+    FROM `multi-final-project.Final_table_NURI.2023_available_stocks_fin` 
+    WHERE Date = '{input_date}'
+        AND Time = {input_time} 
+        AND Rental_location_ID IN {zone_id_tuple}
+    """
+    query_job = client.query(query)
+    results = query_job.result()
+    
+    stock_list = []
+    for row in results:
+        stock_list.append(dict(row))
+    return stock_list
+
+def merge_result(zone, pred, all_stations, target_stations): # stock과 pred를 합치는 함수
     # 1. input data
     input_df = LGBMRegressor.merge_LGBM_facility_time()
-    # 2. prediction
-    predictions = LGBMRegressor.LGBMpredict()
-    predictions_list = np.ceil(predictions).astype(int).tolist() # 올림하여 predictions을 정수로 만듦
-    # 앞에 함수 하나 더 만들어서 LSTM과 앙상블
-    # 3. stock
-    LGBM_stock_list = LGBMRegressor.load_LGBMstock(zone)
-                #         [{
-                        #     "Date": "Wed, 01 Mar 2023 00:00:00 GMT",
-                        #     "Name_of_the_rental_location": "ㅇㄹㅇㄹ",
-                        #     "Rental_location_ID": "ST-1577",
-                        #     "Time": 12,
-                        #     "stock": 0.0
-                #       },...]
+    
+    # 2. predicted data
+    ensembled_result = ensemble(pred, all_stations, target_stations)
+    ensembled_predictions = np.ceil(ensembled_result).astype(int).tolist()# 올림하여 ensembled_result을 정수로 만듦 # list 형태
 
-    # 4-1. stock_dict 생성
-    LGBM_dict = {}
-    for item in LGBM_stock_list:
+    # 3. stock 
+    stock_list = load_stock(zone)
+    #         [{
+            #     "Date": "Wed, 01 Mar 2023 00:00:00 GMT",
+            #     "Name_of_the_rental_location": "ㅇㄹㅇㄹ",
+            #     "Rental_location_ID": "ST-1577",
+            #     "Time": 12,
+            #     "stock": 0.0
+    #       },...]
+
+    # 4-1. selected_zone_dict 생성
+    selected_zone_dict = {}
+    for item in stock_list:
         rental_location_id = item["Rental_location_ID"]
-        LGBM_dict[rental_location_id] = item
+        selected_zone_dict[rental_location_id] = item
 
     # 4-2. merge all data
     merged_result = {}    
     for i in range(len(input_df)):  # 관리권역 1, 2 모두 들어있음
         input_row = input_df.iloc[i]
-        predicted_value = predictions_list[i]
+        predicted_value = ensembled_predictions[i]
         stationid = input_row['Rental_Location_ID']
 
-        station_item = LGBM_dict.get(stationid, None)
+        station_item = selected_zone_dict.get(stationid, None)
         if station_item:
             merged_result[stationid] = {
                 "predicted_rental": predicted_value,
@@ -283,7 +402,7 @@ def merge_LGBMresult(zone):
     return merged_result
 
 def find_station_status(zone):
-    merged_result = merge_LGBMresult(zone)  # dict 형태 {"ST-1561": {"predicted_rental": 0, "stock": 2.0}, ...}
+    merged_result = merge_result(zone)  # dict 형태 {"ST-1561": {"predicted_rental": 0, "stock": 2.0}, ...}
     for stationid, item in merged_result.items():
         stock = item["stock"]
         predicted_rental = item['predicted_rental']
@@ -301,13 +420,7 @@ def load_zone_distance(zone):
         lines = fr.readlines()
         for line in lines:
             zone_distance.append(line.strip())
-            # 리스트형태의 튜플 (각 row는 tuple, 전체는 list)
-            # result = [
-            #                 (1, 'Alice', 25),
-            #                 (2, 'Bob', 30),
-            #                 (3, 'Charlie', 35)
-            #             ]
-    return zone_distance
+    return zone_distance # 리스트형태의 튜플 (각 row는 tuple, 전체는 list)
 
 def make_supply_list(zone):
         station_status_dict = find_station_status(zone)
@@ -331,7 +444,7 @@ def make_supply_list(zone):
             supply_demand.append((-1) * sum(supply_demand))  # supply_demand에 center 추가
             print("def make_supply_list로 supply list에 Center 추가!")
         month, day, hour = user_input_datetime()
-        print(f"{hour}시 supply_demand: ", supply_demand)
+        # print(f"{hour}시 supply_demand: ", supply_demand)
         return supply_demand
 
 def station_names(zone):
@@ -347,15 +460,18 @@ def station_names(zone):
             station_names[len(zone_distance)] = "center"
             print("\ndef station_names()로 station_names에 Center 추가!")
             print("station_names[len(zone_distance)]: ", station_names[len(zone_distance)])
+        print(station_names)
         return station_names
 
 def Bike_Redistribution(zone):
     supply_demand = make_supply_list(zone)
     zone_distance = load_zone_distance(zone)
+
     # 데이터 정의
     supply = supply_demand
     num_stations = len(supply)
     cost = zone_distance
+
     # 디버깅 코드
     if num_stations == len(cost):
         print("\nlen(num_stations)랑 len(cost) 일치!")
@@ -399,318 +515,139 @@ def Bike_Redistribution(zone):
 
     return Bike_Redistribution, x, solve_status
 
-# 메인 페이지
-@app.route('/')
-def index():
-    return render_template('nuri_amend.html')
+@staticmethod
+def save_result(zone):
+    supply_demand = make_supply_list(zone)
+    zone_distance = load_zone_distance(zone)
+    station_names = station_names(zone)
+    num_stations = len(supply_demand)
+    problem, x, solve_status = Bike_Redistribution(supply_demand, zone_distance, station_names)
 
-@app.route('/zone1')
-def zone1_page():
-    tmap_api_key = secrets['api_keys']['tmap_api_key']    # 기본값 설정
-    zone = None
-    month = None
-    day = None
-    hour = None
-    buttons_visible = False    
+    station_status_dict = find_station_status(zone)
+    results_dict = {"status": solve_status, "moves": []}
 
-    if request.args:  # 사용자가 폼을 제출했을 때
-        zone = 'zone1'
-        month = request.args.get('month') # 'month' 입력 필드의 값
-        day = request.args.get('day')    # 'day' 입력 필드의 값
-        hour = request.args.get('hour')   # 'hour' 입력 필드의 값
-        month, day , hour = user_input_datetime()
-        zone_id_list = load_zone_id(zone) # ⭐️
+    for i in range(num_stations):
+        for j in range(num_stations):
+            if x[i, j].varValue is not None and x[i, j].varValue > 0:
+                from_name = station_names[i]
+                to_name = station_names[j]
+                cur_station_dict = station_status_dict.get(to_name)
+                if not cur_station_dict: # 디버깅 코드
+                    print("\n", to_name, "no visit!")
+                else:
+                    stock = cur_station_dict["stock"]
+                    results_dict["moves"].append({
+                        "from_station": from_name,
+                        "from_index": i,
+                        "to_station": to_name,
+                        "to_index": j,
+                        "bikes_moved": x[i, j].varValue,
+                        "stock": stock  # 가져온 stock 값 
+                    })
 
-        print(f"사용자 입력값 - month: {month}, day: {day}, hour: {hour}")
+                print(f"후처리 전- From {from_name}({i}) to {to_name}({j}), move bikes: {x[i, j].varValue}")
+    return results_dict
 
-        # LGBM 클래스 메서드 호출
-        try:
-            # 사용자 입력에 따라 데이터 처리
-            LGBM_time = LGBMRegressor.get_LGBMtime()  # 시간 정보 가져오기
-            print(f"LGBM Time Info: {LGBM_time}")
-            
-            # 데이터 병합 및 예측
-            input_df = LGBMRegressor.merge_LGBM_facility_time()
-            # print(f"Input DataFrame:\n{input_df.head()}")
-            
-            predictions = LGBMRegressor.LGBMpredict()
-            print(f"LGBM Predictions: {predictions}") # 31개만 나오고있음
-            
-            # BigQuery 데이터 가져오기
-            print(f"Loading stocks for zone: {zone}")
-            stocks = LGBMRegressor.load_LGBMstock(zone)
-            print(f"Stocks loaded: {stocks}")
-            merged_result = merge_LGBMresult(zone)
-            print(f"Merged_result: {merged_result}")
-            # 결과값 추가 가공 메서드 호출
-            zone_distances = load_zone_distance(zone)
-            print(f"zone_distances: {zone_distances}")
-            
-            processed_data = find_station_status(zone)  # 상태 계산
-            print(f"Processed Station Status:\n{processed_data}")
+#후처리 함수
+@staticmethod
+def simplify_movements(zone, x, station_names):
+    supply_demand = make_supply_list(zone)
+    zone_distance = load_zone_distance(zone)
+    station_names = station_names(zone)
+    problem, x, solve_status = Bike_Redistribution(supply_demand, zone_distance, station_names)
 
-            # 가공된 결과 확인
-            supply_demand = make_supply_list(zone)  # 수요-공급 리스트 생성
-            print(f"Supply Demand List:\n{supply_demand}")
+    simplified_moves = {}
+    simplified_flag = False  # 간소화 여부를 확인하기 위한 플래그
+    for (i, j), var in x.items():
+        if var.varValue is not None and var.varValue > 0:
+            # 현재 이동량 추가
+            move_amount = var.varValue
+            if (j, i) in simplified_moves: #이미 저장된 반대 방향 이동 (j, i)가 존재하는지 확인
+                reverse_amount = simplified_moves.pop((j, i)) #반대 방향 이동량 가져오기 및 삭제
+                net_amount = move_amount - reverse_amount #상쇄 결과 계산(간소화된 move결과)
+                
+                #간소화된 move를 simplified_moves에 추가(양수인지 음수인지 고려해서)
+                if net_amount > 0: 
+                    simplified_moves[(i, j)] = net_amount
+                elif net_amount < 0:
+                    simplified_moves[(j, i)] = -net_amount
 
-            # Zone Names 생성
-            station_name_data = station_names(zone)
-            print(f"Station Names:\n{station_name_data}")
-
-
-            
-            buttons_visible = True  # 버튼 활성화
-        except Exception as e:
-            print(f"Error during LGBM processing: {str(e)}")
-            predictions = []
-            stocks = []
-        
-        if month and day and hour:
-            # 폼이 제출되면 버튼을 보이도록 설정
-            buttons_visible = True
-            month = str(month).zfill(2)
-            day = str(day).zfill(2)
-            hour = str(hour).zfill(2)
-
-    # GET 요청 시 HTML 폼 렌더링
-    return render_template('zone1.html',buttons_visible = buttons_visible, tmap_api_key = tmap_api_key, month=month, day=day, hour=hour)
-
-@app.route('/zone2')
-def zone2_page():
-    tmap_api_key = secrets['api_keys']['tmap_api_key']    # 기본값 설정
-    zone = None # ⭐️
-    month = None
-    day = None
-    hour = None
-    buttons_visible = False
-    if request.args:  # 사용자가 폼을 제출했을 때
-        zone = 'zone2'
-        month = request.args.get('month')  # 'month' 입력 필드의 값
-        day = request.args.get('day')      # 'day' 입력 필드의 값
-        hour = request.args.get('hour')    # 'hour' 입력 필드의 값
-        month, day , hour = user_input_datetime()        
-        zone_id_list = load_zone_id(zone) # ⭐️
-
-      
-        # 168시간 이전 데이터 계산
-        target_datetime = datetime(2024, int(month), int(day), int(hour))  # 예시 연도
-        before168_datetime = target_datetime - timedelta(hours=168)
-        
-        print(f"입력값: {target_datetime}, 168시간 이전: {before168_datetime}")
-
-        # 빅쿼리에서 데이터 조회
-        project_id = "multi-final-project"
-        dataset_id = "Final_table_NURI"
-        table_id = "LSTM_data_for_forecast_cloudsql"
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-        time_series_data = LSTM_Bidirectional.get_time_series_data(
-            project_id, dataset_id, table_id, before168_datetime, target_datetime
-        )
-        print(f"불러온 데이터:\n{time_series_data}")
-        
-        # LSTM 모델 초기화
-        lstm_model = LSTM_Bidirectional(model_path='./model/LSTM_Bidirectional_model_1202.pth')
-        print("LSTM Bidirectional model loaded.")
-
-        # 예측 수행
-        predictions = lstm_model.predict(
-        project_id, dataset_id, table_id, before168_datetime, target_datetime, device
-        )
-        print(predictions)
-
-        # 전체 대여소 ID 리스트 (길이 161)
-        all_stations = [
-        "ST_1171",	"ST_1172",	"ST_1173",	"ST_1174",	"ST_1178",	"ST_1179",	"ST_1180",	
-        "ST_1181",	"ST_1182",	"ST_1184",	"ST_1185",	"ST_1186",	"ST_1245",	"ST_1246",	
-        "ST_1247",	"ST_1248",	"ST_1364",	"ST_1365",	"ST_1407",	"ST_1433",	"ST_1559",	
-        "ST_1561",	"ST_1562",	"ST_1566",	"ST_1568",	"ST_1571",	"ST_1573",	"ST_1574",	
-        "ST_1575",	"ST_1576",	"ST_1577",	"ST_1578",	"ST_1679",	"ST_1703",	"ST_777",	
-        "ST_779",	"ST_782",	"ST_783",	"ST_784",	"ST_786",	"ST_787",	"ST_788",	
-        "ST_790",	"ST_791",	"ST_792",	"ST_793",	"ST_794",	"ST_795",	"ST_796",	
-        "ST_798",	"ST_799",	"ST_801",	"ST_802",	"ST_804",	"ST_806",	"ST_807",	
-        "ST_808",	"ST_809",	"ST_810",	"ST_811",	"ST_812",	"ST_813",	"ST_814",	
-        "ST_815",	"ST_816",	"ST_817",	"ST_819",	"ST_820",	"ST_822",	"ST_823",	
-        "ST_937",	"ST_953",	"ST_956",	"ST_957",	"ST_958",	"ST_959",	"ST_960",	
-        "ST_961",	"ST_962",	"ST_963",	"ST_966",	"ST_1560",	"ST_2690",	"ST_2474",	
-        "ST_2788",	"ST_2837",	"ST_2839",	"ST_2868",	"ST_2869",	"ST_2926",	"ST_3078",	
-        "ST_3096",	"ST_3164",	"ST_3179",	"ST_3185",	"ST_2870",	"ST_2927",	"ST_3066",	
-        "ST_3108",	"ST_3109",	"ST_3112",	"ST_3115",	"ST_3178",	"ST_3254",	"ST_1177",	
-        "ST_2684",	"ST_2847",	"ST_2882",	"ST_3111",	"ST_3243",	"ST_3208",	"ST_3207",	
-        "ST_1366",	"ST_1564",	"ST_1680",	"ST_1882",	"ST_1883",	"ST_1884",	"ST_1888",	
-        "ST_1889",	"ST_1892",	"ST_1893",	"ST_1895",	"ST_1896",	"ST_1897",	"ST_2673",	
-        "ST_2675",	"ST_2677",	"ST_2678",	"ST_2679",	"ST_2680",	"ST_2681",	"ST_2682",	
-        "ST_2685",	"ST_2686",	"ST_2688",	"ST_2689",	"ST_2691",	"ST_2838",	"ST_2867",	
-        "ST_2925",	"ST_3077",	"ST_3079",	"ST_3240",	"ST_3245",	"ST_3268",	"ST_789",	
-        "ST_954",	"ST_1885",	"ST_2907",	"ST_1881",	"ST_2671",	"ST_818",	"ST_2674",	
-        "ST_2676",	"ST_821",	"ST_1879",	"ST_1880",	"ST_1886",	"ST_1891",	"ST_797"
-        ]
-
-        # 31개 필터링 대상
-        target_stations = [
-        "ST_816",	"ST_784",	"ST_1561",	"ST_961",	"ST_809",	"ST_966",	"ST_1562",	
-        "ST_2684",	"ST_817",	"ST_814",	"ST_962",	"ST_811",	"ST_812",	"ST_3115",	
-        "ST_1896",	"ST_1246",	"ST_3164",	"ST_2682",	"ST_959",	"ST_789",   "ST_953",	
-        "ST_960",	"ST_1366",	"ST_2882",	"ST_1568",	"ST_963",	"ST_786",	"ST_3108",
-        "ST_3208",	"ST_1883",	"ST_1577"
-        ]
-        # 1) station_id -> 인덱스 매핑
-        target_indices = []
-        for st_id in target_stations:
-            if st_id in all_stations:
-                idx = all_stations.index(st_id)
-                target_indices.append(idx)
+                simplified_flag = True
             else:
-                print("Missing:", st_id)
+                simplified_moves[(i, j)] = move_amount
+    
+    # 결과 출력
+    if simplified_flag:
+        for (i, j), amount in simplified_moves.items():
+            from_name = station_names[i]
+            to_name = station_names[j]
+            print(f" 후처리 후- Move {amount} bikes from {from_name}({i}) to {to_name}({j})")
+        print("후처리 진행됨!")
+    else:
+        print("후처리 불필요")
+    return simplified_moves
 
-        print("Original shape:", predictions.shape)  # (1, 161)
-        filtered_predictions = filter_target_stations(predictions, all_stations, target_stations)
-        print("Filtered shape:", filtered_predictions.shape)  # (1, 31)
-        print("Filtered values:", filtered_predictions)
 
-        # session['predictions'] = predictions.tolist()
+# 인덱스 추가 및 파라미터 정리 함수 #POST 대상
+def final_route(x, station_names):
+    # 1. 후처리된 결과
+    simplified_moves = simplify_movements(x, station_names)
+    # simplified_moves 예시 : {(1, 0): 5.0, (1, 2): 4.0, (1, 6): 3.0, (4, 12): 5.0, (5, 3): 3.0, (10, 15): 6.0, (13, 14): 5.0}
 
-        if month and day and hour:
-            # 폼이 제출되면 버튼을 보이도록 설정
-            buttons_visible = True
-            month = str(month).zfill(2)
-            day = str(day).zfill(2)
-            hour = str(hour).zfill(2)
+    # 2. 대여소 상태 dict
+    results_dict = save_result()
+    stock_and_status = results_dict["moves"]
+        # results_dict["moves"].append({
+        #     "from_station": from_name,
+        #     "from_index": i,
+        #     "to_station": to_name,
+        #     "to_index": j,
+        #     "bikes_moved": x[i, j].varValue,
+        # })
 
-    # GET 요청 시 HTML 폼 렌더링
-    return render_template('zone2.html',buttons_visible = buttons_visible, tmap_api_key = tmap_api_key, month=month, day=day, hour=hour)
+    # 3. station_latlon
+    station_LatLonName_dict = load_LatLonName()
 
-@app.route('/test', methods=['GET'])
-def test():
-    print("클라이언트에서 /test 요청 도착") 
+    # 4. 경로 결과값 출력
+    previous_from_station = None
+    simple_moves = []
+    for i, (from_station, to_station), move in enumerate(simplified_moves.items()):
+        # visit station name
+        key = (from_station, to_station)
+        to_station_id= key[1]
+        visit_station_name = station_names[to_station_id]
 
-    if 'predictions' not in session:
-        return jsonify({"error": "No predictions available"}), 400
-    return jsonify({"predictions": session['predictions']})
+        # station_visit_count
+        station_visit_count_list = [key[1] for key in simplified_moves.keys()]
+
+        # lat lon
+        to_station_lat = station_LatLonName_dict[to_station_id]["latitude"]
+        to_station_lon = station_LatLonName_dict[to_station_id]["longitude"]
+
+        visit_count_dict = {}
+        if previous_from_station != from_station:
+            visit_count_dict[to_station_id] = visit_count_dict.get(to_station_id, 0) + 1
+            simple_moves.append({
+                "visit_index": i,
+                "visit_station_id": to_station,
+                "visit_station_name": visit_station_name,
+                "station_visit_count": visit_count_dict[to_station_id],
+                "latitude": to_station_lat, 
+                "longitude": to_station_lon,
+                "status": stock_and_status["status"],
+                "current_stock": stock_and_status["stock"],
+                "move_bikes": move
+        })        
+        previous_from_station = from_station
+    print(simple_moves)
+    return simple_moves
 
 @app.route('/moves', methods=['GET'])
-def get_simple_moves():
-    print("클라이언트에서 /moves 요청 도착") 
-
-    simple_moves = [
-        {
-            "visit_index": 1,
-            "visit_station_id": "ST-963",
-            "visit_station_name": "언주역4번출구",
-            "station_visit_count": 1,
-            "latitude": 37.501228,
-            "longitude": 127.050362,
-            "status": "abundant",
-            "current_stock": 17,
-            "move_bikes": 5
-        },
-        {
-            "visit_index": 2,
-            "visit_station_id": "ST-3208",
-            "visit_station_name": "강남역2번출구",
-            "station_visit_count": 1,
-            "latitude": 37.512810,
-            "longitude": 127.026367,
-            "status": "deficient",
-            "current_stock": 0,
-            "move_bikes": 8
-        },
-        {
-            "visit_index": 3,
-            "visit_station_id": "ST-963",
-            "visit_station_name": "언주역4번출구",
-            "station_visit_count": 1,
-            "latitude": 37.501228,
-            "longitude": 127.050362,
-            "status": "abundant",
-            "current_stock": 12,
-            "move_bikes": 4
-        },
-        {
-            "visit_index": 4,
-            "visit_station_id": "ST-961",
-            "visit_station_name": "강남역2번출구",
-            "station_visit_count": 1,
-            "latitude": 37.518639,
-            "longitude": 127.035400,
-            "status": "deficient",
-            "current_stock": 0,
-            "move_bikes": 8
-        },
-        {
-            "visit_index": 5,
-            "visit_station_id": "ST-784",
-            "visit_station_name": "강남역2번출구",
-            "station_visit_count": 1,
-            "latitude": 37.515888,
-            "longitude": 127.066200,
-            "status": "deficient",
-            "current_stock": 0,
-            "move_bikes": 8
-        },
-        {
-            "visit_index": 6,
-            "visit_station_id": "ST-786",
-            "visit_station_name": "강남역2번출구",
-            "station_visit_count": 1,
-            "latitude": 37.517773,
-            "longitude": 127.043022,
-            "status": "deficient",
-            "current_stock": 0,
-            "move_bikes": 8
-        },
-        {
-            "visit_index": 7,
-            "visit_station_id": "ST-1366",
-            "visit_station_name": "강남역2번출구",
-            "station_visit_count": 1,
-            "latitude": 37.509586,
-            "longitude": 127.040909,
-            "status": "deficient",
-            "current_stock": 0,
-            "move_bikes": 8
-        },
-        {
-            "visit_index": 8,
-            "visit_station_id": "ST-2882",
-            "visit_station_name": "강남역2번출구",
-            "station_visit_count": 1,
-            "latitude": 37.509785,
-            "longitude": 127.042770,
-            "status": "deficient",
-            "current_stock": 0,
-            "move_bikes": 8
-        },
-        {
-            "visit_index": 9,
-            "visit_station_id": "ST-1246",
-            "visit_station_name": "강남역2번출구",
-            "station_visit_count": 1,
-            "latitude": 37.506367,
-            "longitude": 127.034523,
-            "status": "deficient",
-            "current_stock": 0,
-            "move_bikes": 8
-        },
-        {
-            "visit_index": 10,
-            "visit_station_id": "ST-3108",
-            "visit_station_name": "강남역2번출구",
-            "station_visit_count": 1,
-            "latitude": 37.505703,
-            "longitude": 127.029198,
-            "status": "deficient",
-            "current_stock": 0,
-            "move_bikes": 8
-        }
-
-    ]
-    return jsonify(simple_moves)
+def get_simple_moves(zone):
+    Bike_Redistribution, x, solve_status = Bike_Redistribution(zone)
+    simple_moves = final_route(x, station_names)
+    final_simple_moves = jsonify(simple_moves)
+    return final_simple_moves
 
 if __name__ == "__main__":
     app.run(debug=True)
-
-
-
-
-
