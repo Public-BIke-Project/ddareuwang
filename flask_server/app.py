@@ -97,6 +97,7 @@ class LSTM_Bidirectional:
 
         # 5. 결과 반환
         LSTM_pred_fin = LSTM_pred.cpu().numpy()
+        print("\nLSTM_pred_fin: ", LSTM_pred_fin)
         return LSTM_pred_fin
 
 #-- LSTM END -----------------------------------------------------------------------------------------------------------------#
@@ -129,7 +130,7 @@ def load_LatLonName():
                 "Station_name": row['Station_name']
             }
         print("\nstation_LatLonName_dict: ", station_LatLonName_dict)
-        return station_LatLonName_dict # ★여기 한글 깨지는거 수정해야 함.★
+        return station_LatLonName_dict # ★여기 Flask에서 한글 깨지는거 수정해야 함.★
 
 #-- LGBM START -----------------------------------------------------------------------------------------------------------------#
 class LGBMRegressor:
@@ -138,12 +139,14 @@ class LGBMRegressor:
     def load_LGBMfacility():
         LGBM_facility_list = []
         with open ('./data/station_facilities.csv', 'r') as fr:
-            reader = csv.DictReader(fr)
+            reader = csv.reader(fr)
+            next(reader)
             for row in reader:
-                LGBM_facility_list.append(row)
-        print("\nLGBM_facility_list: ", LGBM_facility_list)
+                LGBM_facility_list.append(tuple(row))
+        # print("\nLGBM_facility_list: ", LGBM_facility_list)
         return LGBM_facility_list
-        # [('ST-1171', 6, 2, 0, 2, 1, None, None, None), ...] 한 줄은 set, 전체는 list
+        # {'Rental_Location_ID': 'ST-2675', 'bus_stop': '11', 'park': '5', 'school': '1', 'subway': '0', 'riverside': '0', 'month': '', 'hour': '', 'weekday': ''}
+        # [('ST-1171', 6, 2, 0, 2, 1, None, None, None), ...] 한 줄은 tuple, 전체는 list
 
     #LGBM모델 예측에 필요한 시간 함수 (1시간 timedelta)
     @staticmethod
@@ -162,7 +165,7 @@ class LGBMRegressor:
   
     @staticmethod
     def merge_LGBM_facility_time():
-        # load facility data 
+        # facility data 불러오기 
         facility = LGBMRegressor.load_LGBMfacility()
         columns = ['Rental_Location_ID', 'bus_stop', 'park', 'school', 'subway', 'riverside']
         input_df = pd.DataFrame(facility, columns=columns)
@@ -173,15 +176,16 @@ class LGBMRegressor:
         input_df['hour'] = hour
         input_df['weekday'] = weekday
 
-        # category(범주형) type 컬럼
-        input_df['Rental_Location_ID'] = input_df['Rental_Location_ID'].astype('category')
-        input_df['riverside'] = input_df['riverside'].astype('category')
-        input_df['weekday'] =input_df['weekday'].astype('category')
-
-        # int(숫자) type 컬럼
-        numeric_columns = ['bus_stop', 'park', 'school', 'subway', 'month', 'hour']
-        for col in numeric_columns:
-            input_df[col] = pd.to_numeric(input_df[col], errors='coerce').fillna(0).astype('int')
+        input_columns = ['Rental_Location_ID', 'bus_stop', 'park', 'school', 'subway', 'riverside', 'month', 'hour', 'weekday']
+        numeric_columns = ['bus_stop', 'park', 'school', 'subway', 'month', 'hour'] 
+        categorical_columns = ['Rental_Location_ID', 'riverside', 'weekday']
+        for col in input_columns:
+            if col in categorical_columns: # 카테고리형 컬럼
+                input_df[col] = input_df[col].astype('category')
+            elif col in numeric_columns: # 정수형 컬럼
+                input_df[col] = input_df[col].astype('int')
+            else:
+                print(f"{col} is not categorical nor numeric")
 
         # 디버깅 출력
         print("\nDataFrame after processing:")
@@ -194,7 +198,7 @@ class LGBMRegressor:
     @staticmethod
     # 모델 불러오기
     def load_LGBMmodel():
-        with open ('./model/250106_NEW_LGBMmodel.pkl', 'rb') as file:
+        with open ('./model/250109_NEW_LGBMmodel.pkl', 'rb') as file:
              LGBM_model = pickle.load(file)
         return LGBM_model
 
@@ -207,34 +211,36 @@ class LGBMRegressor:
         LGBM_pred = model.predict(input_df)
         return LGBM_pred # type : np.ndarray / 소수점 형태
 
-    @staticmethod 
-    def load_LGBMstock(zone):
-        zone_id_list = load_zone_id(zone)
-        zone_id_tuple = tuple(zone_id_list)
-        
-        # 해당 시간만
-        month, day, hour = user_input_datetime()
-        input_date = datetime(2023, month, day)
-        input_date = str(input_date.strftime('%Y-%m-%d'))
-        input_time = int(hour)
-
-        LGBM_stock_list = []
-        query = f"""
-        SELECT * 
-        FROM `multi-final-project.Final_table_NURI.2023_available_stocks_fin` 
-        WHERE Date = '{input_date}'
-            AND Time = {input_time} 
-            AND Rental_location_ID IN {zone_id_tuple}
-        """
-        query_job = client.query(query)
-        results = query_job.result()
-        for row in results:
-            LGBM_stock_list.append(dict(row))
-        # print("\nLGBM_stock_list: ", LGBM_stock_list)
-        return LGBM_stock_list
-
 
 #-- LGBM END -----------------------------------------------------------------------------------------------------------------#
+
+@staticmethod 
+def load_stock(zone):
+    zone_id_list = load_zone_id(zone)
+    zone_id_tuple = tuple(zone_id_list)
+    
+    # user input 시간만 stock 불러옴
+    month, day, hour = user_input_datetime()
+    input_date = datetime(2023, month, day)
+    input_date = str(input_date.strftime('%Y-%m-%d'))
+    input_time = int(hour)
+
+    stock_list = []
+    query = f"""
+    SELECT * 
+    FROM `multi-final-project.Final_table_NURI.2023_available_stocks_fin` 
+    WHERE Date = '{input_date}'
+        AND Time = {input_time} 
+        AND Rental_location_ID IN {zone_id_tuple}
+    """
+    query_job = client.query(query)
+    results = query_job.result()
+    for row in results:
+        stock_list.append(dict(row))
+    return stock_list
+    # stock_list = [{'Date': datetime.date(2023, 4, 2), 
+    #               'Time': 6, 'stock': 3.0, 'Rental_location_ID': 'ST-3164', 
+    #               'Name_of_the_rental_location': '청담역 1번출구'}, ... ]
 
 def merge_result(zone, LSTM_pred_fin):
     """
@@ -244,26 +250,19 @@ def merge_result(zone, LSTM_pred_fin):
     4) 대여소별로 최종 딕셔너리 반환
     """
     # 1. LGBM input_data & 예측
-    input_df = LGBMRegressor.merge_LGBM_facility_time()
-    LGBM_pred = LGBMRegressor.LGBMpredict()              # shape (N,)
-    LGBM_pred_fin = LGBM_pred[np.newaxis, :]            # shape (1, N)
-
+    LGBM_pred = LGBMRegressor.LGBMpredict()             # shape (N,) : 1차원 배열 ndarray [1 2 3 4]
+    LGBM_pred_fin = LGBM_pred[np.newaxis, :]            # shape (1, N) : 2차원 배열 [[1 2 3 4]]
 
     # 2. 앙상블
-    ensemble_array = np.rint((LGBM_pred_fin + LSTM_pred_fin) / 2).astype(int)  # shape (1, N) # 가장 가까운 정수로 반올림
-    # print("\nensemble_array[0]: ", ensemble_array[0], "type(ensemble_array[0]): ", type(ensemble_array[0]))
-    # print("\nensemble_array: ", ensemble_array, "type(ensemble_array): ", type(ensemble_array))
-    # shape이 (1, N)이므로, list 변환 시 (N,) 형태로 만듦
-    # LGBM_pred_list = LGBM_pred_fin[0].tolist()        # LGBM 예측(올림 적용 전/후는 상황에 따라)
-    # LSTM_pred_list = LSTM_pred_fin[0].tolist()        # LSTM 예측
-    ensemble_list = ensemble_array[0].tolist()         # 앙상블 예측
+    ensemble_array = np.rint((LGBM_pred_fin + LSTM_pred_fin) / 2).astype(int)  # shape (1, N)    # rint : 가장 가까운 정수로 반올림
+    ensemble_list = ensemble_array[0].tolist()
     # print("\nensemble_list: ", ensemble_list, "type(ensemble_list): ", type(ensemble_list))
 
     # (선택) LGBM 예측을 올림하기 원한다면, np.ceil 또는 np.round 후 list 변환
     # LGBM_pred_list = np.ceil(LGBM_pred_fin)[0].astype(int).tolist()
 
     # 3. stock 병합
-    stock_list = LGBMRegressor.load_LGBMstock(zone)
+    stock_list = load_stock(zone)
         #         [{
             #     "Date": "Wed, 01 Mar 2023 00:00:00 GMT",
             #     "Name_of_the_rental_location": "ㅇㄹㅇㄹ",
@@ -278,6 +277,7 @@ def merge_result(zone, LSTM_pred_fin):
         selected_zone_dict[rental_location_id] = item  # { 'ST-784': {...}, ...}
 
     # 4. 대여소별 결과 dict 작성
+    input_df = LGBMRegressor.merge_LGBM_facility_time()
     merged_result = {}
     for i in range(len(input_df)):  # N개의 대여소
         stationid = input_df.iloc[i]['Rental_Location_ID']
@@ -626,7 +626,7 @@ def zone1_page():
             print("앙상블 결과:", ensemble_array)
 
             # BigQuery 데이터 가져오기
-            stocks = LGBMRegressor.load_LGBMstock(zone)
+            stocks = load_stock(zone)
             merged_result = merge_result(zone,LSTM_pred_fin)
             # print(f"merged_result:{merged_result}")
 
