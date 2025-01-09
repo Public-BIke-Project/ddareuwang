@@ -82,20 +82,20 @@ class LSTM_Bidirectional:
     def predict(self, project_id, dataset_id, table_id, before168_DT, target_DT, device):
         # 1. BigQuery에서 데이터 가져오기
         df_168hours = self.get_time_series_data(project_id, dataset_id, table_id, before168_DT, target_DT)
-        # 데이터 타입 변환
+            # 데이터 타입 변환
         df_168hours = df_168hours.astype({
             col: 'float32' if df_168hours[col].dtype == 'float64' else 'int32'
             for col in df_168hours.columns
         })
         
-        # 3. 모델 입력 준비
+        # 2. 모델 입력 준비 : 텐서 값으로 입력
         input_data = torch.tensor(df_168hours.values, dtype=torch.float32).unsqueeze(0).to(device)
 
-        # 4. 모델 예측
+        # 3. 모델 예측
         with torch.no_grad():
-            LSTM_pred = self.model(input_data)
+            LSTM_pred = self.model(input_data) # tensor 형태
 
-        # 5. 결과 반환
+        # 4. 결과 반환
         LSTM_pred_fin = LSTM_pred.cpu().numpy()
         print("\nLSTM_pred_fin: ", LSTM_pred_fin)
         return LSTM_pred_fin
@@ -289,7 +289,7 @@ def merge_result(zone, LSTM_pred_fin):
                 "stock": station_item["stock"]
             }
         # else:
-        #     print(f"{stationid}: not in {zone}(다른 관리권역에 있거나 31개에 포함되지 않음)")
+        #     print(f"{stationid}: not in {zone} (다른 관리권역에 있거나 31개에 포함되지 않음)")
 
     return merged_result
 
@@ -308,16 +308,14 @@ def find_station_status(zone,LSTM_pred_fin):
 
 def load_zone_distance(zone):
     zone_distance = []
-    with open (f'./data/{zone}_distance.csv', 'r') as fr:
+    with open(f'./data/{zone}_distance.csv', 'r') as fr:
         lines = fr.readlines()
-        for line in lines:
-            zone_distance.append(line.strip())
-            # 리스트형태의 튜플 (각 row는 tuple, 전체는 list)
-            # result = [
-            #                 (1, 'Alice', 25),
-            #                 (2, 'Bob', 30),
-            #                 (3, 'Charlie', 35)
-            #             ]
+        for line in lines[1:]:  # header 건너뛰기
+            line = line.strip()                      # "ST-786,0,2.83,1.78,2.18"
+            values = line.split(",")                 # ['ST-786', '0', '2.83', '1.78', '2.18']
+            distance_values = values[1:]             # 맨 앞에 ST-..는 건너뛰기 -> ['0', '2.83', '1.78', '2.18']
+            row = list(map(float, distance_values))  # [0.0, 2.83, 1.78, 2.18]
+            zone_distance.append(row)
     return zone_distance
 
 def make_supply_list(zone,LSTM_pred_fin):
@@ -341,16 +339,15 @@ def make_supply_list(zone,LSTM_pred_fin):
         if sum(supply_demand) < 0:
             supply_demand.append(int((-1) * sum(supply_demand)))  # supply_demand에 center 추가
             print("def make_supply_list로 supply list에 Center 적재량 추가!")
-        
         return supply_demand
 
 def station_names(zone, LSTM_pred_fin):
-    zone_distance = load_zone_distance(zone)
-    header = zone_distance[0].split(",")  # CSV 파일의 첫 줄을 ','로 분리
-
+    zone_distance = load_zone_distance(zone) # header 없음
     station_names_data = {}
-    for i, station_name in enumerate(header[1:]): # center까지 모두 추가
-        station_names_data[i] = station_name # 인덱스와 station names 매핑
+    for i, row in enumerate(zone_distance):
+        station_name = zone_distance[i].split(",")[0]
+        station_names_data[i] = station_name # station_names_data에 추가
+    print("\n[station_names_data 확인]: ", station_names_data)
 
     # supply_demand 생성 및 디버깅
     supply_demand = make_supply_list(zone, LSTM_pred_fin)
@@ -365,15 +362,20 @@ def station_names(zone, LSTM_pred_fin):
     else:  # 공급 부족인 경우 center 유지
         print(f"\n[INFO] supply_demand가 부족하여 station_names_data에서 Center 정보 유지.")
 
-    # 디버깅: center 처리 후 station_names 출력
-    for index, station_name in station_names_data.items():
-        print(f"center 처리 후 - Index: {index}, Station Name: {station_name}")
+    # # 디버깅: center 처리 후 station_names 출력
+    # for index, station_name in station_names_data.items():
+    #     print(f"center 처리 후 - Index: {index}, Station Name: {station_name}")
             
     return station_names_data
+            # {0: 'ST-786', 
+            # 1: 'ST-3108', 
+            # 2: 'ST-963', 
+            # ...
+            # 15: 'ST-3208'} 
 
 def Bike_Redistribution(zone, LSTM_pred_fin):
-    supply_demand = make_supply_list(zone, LSTM_pred_fin)
-    zone_distance = load_zone_distance(zone)
+    supply_demand = make_supply_list(zone, LSTM_pred_fin) # list 형태
+    zone_distance = load_zone_distance(zone) # csv 파일을 (각 row는 tuple, 전체는 list) 형태로 변환
     
     if sum(supply_demand[:-1]) > 0:  # 공급 부족이 아닌 경우 zone_distance에서 center 제거
         zone_distance.pop()  # 마지막 항목(center) 제거
@@ -387,7 +389,7 @@ def Bike_Redistribution(zone, LSTM_pred_fin):
     cost = zone_distance
 
     # 디버깅 코드
-    if num_stations == len(cost) -1:   # header 제외하고 계산 
+    if num_stations == len(cost):
         print("\nnum_stations랑 len(cost) 일치!")
     else:
         print("\nERROR: len(num_stations)랑 len(cost) 불일치!")
@@ -429,7 +431,7 @@ def Bike_Redistribution(zone, LSTM_pred_fin):
     return Bike_Redistribution_result, x, solve_status
 
 @staticmethod
-def save_result(zone, LSTM_pred_fin): #⭐
+def save_result(zone, LSTM_pred_fin):
     supply_demand = make_supply_list(zone,LSTM_pred_fin)
     station_names_data = station_names(zone)
     num_stations = len(supply_demand)
@@ -457,6 +459,7 @@ def save_result(zone, LSTM_pred_fin): #⭐
                         "stock": stock  # 가져온 stock 값 
                     })
                 print(f"후처리 전- From {from_name}({i}) to {to_name}({j}), move bikes: {x[i, j].varValue}")
+    print("\nresults_dict: ", results_dict)
     return results_dict
 
 # #후처리 함수
@@ -596,7 +599,7 @@ def zone1_page():
             # LGBM 데이터 병합 및 예측
             LGBM_time = LGBMRegressor.get_LGBMtime()  # 시간 정보 가져오기           
             input_df = LGBMRegressor.merge_LGBM_facility_time()    
-            LGBM_pred = LGBMRegressor.LGBMpredict()   
+            LGBM_pred = LGBMRegressor.LGBMpredict()  
 
             # LSTM 168시간 이전 데이터 계산
             target_DT = datetime(2024, int(month), int(day), int(hour))  # 예시 연도
@@ -608,29 +611,22 @@ def zone1_page():
             table_id = "LSTM_data_for_forecast_cloudsql"
             device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-            time_series_data = LSTM_Bidirectional.get_time_series_data(
-                project_id, dataset_id, table_id, before168_DT, target_DT)
+            time_series_data = LSTM_Bidirectional.get_time_series_data(project_id, dataset_id, table_id, before168_DT, target_DT)
             
             # LSTM 모델 초기화
             lstm_model = LSTM_Bidirectional(model_path='./model/LSTM_Bidirectional_model_1202.pth')
             print("LSTM Bidirectional model loaded.")
 
             # 예측 수행
-            LSTM_pred_fin = lstm_model.predict(
-            project_id, dataset_id, table_id, before168_DT, target_DT, device
-            )
+            LSTM_pred_fin = lstm_model.predict(project_id, dataset_id, table_id, before168_DT, target_DT, device)
 
             LGBM_pred_fin = LGBM_pred[np.newaxis, :]
-
-            ensemble_array = (LGBM_pred_fin +  LSTM_pred_fin) / 2
-            print("앙상블 결과:", ensemble_array)
 
             # BigQuery 데이터 가져오기
             stocks = load_stock(zone)
             merged_result = merge_result(zone,LSTM_pred_fin)
-            # print(f"merged_result:{merged_result}")
 
-        # session['predictions'] = predictions.tolist()
+            # session['predictions'] = predictions.tolist()
 
 
             # 결과값 추가 가공 메서드 호출
@@ -641,8 +637,8 @@ def zone1_page():
             # Zone Names 생성
             station_name_data = station_names(zone,LSTM_pred_fin)
             #----------
-            redistribution_result, x, solve_status = Bike_Redistribution(zone,LSTM_pred_fin)
-            print(f"Bike Redistribution Result: {redistribution_result}")
+            Bike_Redistribution_result, x, solve_status = Bike_Redistribution(zone, LSTM_pred_fin)
+            print(f"Bike Redistribution Result: {Bike_Redistribution_result}")
             print(f"Solve Status: {solve_status}")
             # results_dict = save_result(zone) 나한테 없는 코드
             # simplified_moves = simplify_movements(zone, x, station_name_data)
