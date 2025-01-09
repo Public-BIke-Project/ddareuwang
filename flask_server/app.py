@@ -24,6 +24,96 @@ GOOGLE_CREDENTIALS_PATH = secrets['bigquery']['credentials_file']
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = GOOGLE_CREDENTIALS_PATH
 client = bigquery.Client()
 
+# 메인 페이지
+@app.route('/')
+def index():
+    return render_template('nuri_amend.html')
+
+@app.route('/zone1')
+def zone1_page():
+    tmap_api_key = secrets['api_keys']['tmap_api_key']    # 기본값 설정
+    zone = None
+    month = None
+    day = None
+    hour = None
+    buttons_visible = False    
+
+    if request.args:  # 사용자가 폼을 제출했을 때
+        zone = 'zone1'
+        month = request.args.get('month') # 'month' 입력 필드의 값
+        day = request.args.get('day')    # 'day' 입력 필드의 값
+        hour = request.args.get('hour')   # 'hour' 입력 필드의 값
+        month, day , hour = user_input_datetime()
+        zone_id_list = load_zone_id(zone) # ⭐️
+
+        print(f"사용자 입력값 - month: {month}, day: {day}, hour: {hour}")
+        # LGBM 클래스 메서드 호출
+        try:
+            # LGBM 데이터 병합 및 예측
+            LGBM_time = LGBMRegressor.get_LGBMtime()  # 시간 정보 가져오기           
+            input_df = LGBMRegressor.merge_LGBM_facility_time()    
+            LGBM_pred = LGBMRegressor.LGBMpredict()  
+
+            # LSTM 168시간 이전 데이터 계산
+            target_DT = datetime(2024, int(month), int(day), int(hour))  # 예시 연도
+            before168_DT = target_DT - timedelta(hours=168)
+            
+            # 빅쿼리에서 데이터 조회
+            project_id = "multi-final-project"
+            dataset_id = "Final_table_NURI"
+            table_id = "LSTM_data_for_forecast_cloudsql"
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+            time_series_data = LSTM_Bidirectional.get_time_series_data(project_id, dataset_id, table_id, before168_DT, target_DT)
+            
+            # LSTM 모델 초기화
+            lstm_model = LSTM_Bidirectional(model_path='./model/LSTM_Bidirectional_model_1202.pth')
+            print("LSTM Bidirectional model loaded.")
+
+            # 예측 수행
+            LSTM_pred_fin = lstm_model.predict(project_id, dataset_id, table_id, before168_DT, target_DT, device)
+
+            LGBM_pred_fin = LGBM_pred[np.newaxis, :]
+
+            # BigQuery 데이터 가져오기
+            stocks = load_stock(zone)
+            merged_result = merge_result(zone,LSTM_pred_fin)
+
+            # session['predictions'] = predictions.tolist()
+
+
+            # 결과값 추가 가공 메서드 호출
+            zone_distances = load_zone_distance(zone)
+            processed_data = find_station_status(zone,LSTM_pred_fin)  # 상태 계산
+            # 가공된 결과 확인
+            supply_demand = make_supply_list(zone,LSTM_pred_fin)  # 수요-공급 리스트 생성
+            # Zone Names 생성
+            station_name_data = station_names(zone,LSTM_pred_fin)
+            #----------
+            Bike_Redistribution_result, x, solve_status = Bike_Redistribution(zone, LSTM_pred_fin)
+            print(f"Bike Redistribution Result: {Bike_Redistribution_result}")
+            print(f"Solve Status: {solve_status}")
+            # results_dict = save_result(zone) 나한테 없는 코드
+            # simplified_moves = simplify_movements(zone, x, station_name_data)
+            # simple_moves = final_route(x, station_name_data)
+            # final_simple_moves = get_simple_moves(zone)
+            
+            buttons_visible = True  # 버튼 활성화
+        except Exception as e:
+            print(f"Error during LGBM processing: {str(e)}")
+            LGBM_pred = []
+            stocks = []
+        
+        if month and day and hour:
+            # 폼이 제출되면 버튼을 보이도록 설정
+            buttons_visible = True
+            month = str(month).zfill(2)
+            day = str(day).zfill(2)
+            hour = str(hour).zfill(2)
+
+    # GET 요청 시 HTML 폼 렌더링
+    return render_template('zone1.html',buttons_visible = buttons_visible, tmap_api_key = tmap_api_key, month=month, day=day, hour=hour)
+
 #-- LSTM START -----------------------------------------------------------------------------------------------------------------#
 # 모델 클래스 정의
 class BidirectionalModel(nn.Module):
@@ -97,7 +187,6 @@ class LSTM_Bidirectional:
 
         # 4. 결과 반환
         LSTM_pred_fin = LSTM_pred.cpu().numpy()
-        print("\nLSTM_pred_fin: ", LSTM_pred_fin)
         return LSTM_pred_fin
 
 #-- LSTM END -----------------------------------------------------------------------------------------------------------------#
@@ -299,7 +388,7 @@ def find_station_status(zone,LSTM_pred_fin):
         stock = item["stock"]
         predicted_rental = item['predicted_rental']
         status = stock - (predicted_rental + 3) # 예측된 수요량보다 3개 더 많아야 함
-        if status <= 0:
+        if status < 0:
             merged_result[stationid]["status"] = "deficient"
         else:
             merged_result[stationid]["status"] = "abundant"
@@ -311,8 +400,7 @@ def load_zone_distance(zone):
     with open(f'./data/{zone}_distance.csv', 'r') as fr:
         lines = fr.readlines()
         for line in lines[1:]:  # header 건너뛰기
-            line = line.strip()                      # "ST-786,0,2.83,1.78,2.18"
-            values = line.split(",")                 # ['ST-786', '0', '2.83', '1.78', '2.18']
+            values = str(line).split(",")            # ['ST-786', '0', '2.83', '1.78', '2.18']
             distance_values = values[1:]             # 맨 앞에 ST-..는 건너뛰기 -> ['0', '2.83', '1.78', '2.18']
             row = list(map(float, distance_values))  # [0.0, 2.83, 1.78, 2.18]
             zone_distance.append(row)
@@ -342,19 +430,16 @@ def make_supply_list(zone,LSTM_pred_fin):
         return supply_demand
 
 def station_names(zone, LSTM_pred_fin):
-    zone_distance = load_zone_distance(zone) # header 없음
     station_names_data = {}
-    for i, row in enumerate(zone_distance):
-        station_name = zone_distance[i].split(",")[0]
-        station_names_data[i] = station_name # station_names_data에 추가
-    print("\n[station_names_data 확인]: ", station_names_data)
+    with open(f'./data/{zone}_distance.csv', 'r') as fr: 
+        first_line = fr.readline()
+        first_line_list = first_line.strip().split(',')
+        for i in range(1, len(first_line_list)):
+            station_name = first_line_list[i]
+            station_names_data[i] = station_name  # -> 일단 center까지 모두 추가
 
-    # supply_demand 생성 및 디버깅
+    # Center 처리 조건 (station_names_data)
     supply_demand = make_supply_list(zone, LSTM_pred_fin)
-    print("\n[supply_demand 확인]: ", supply_demand)
-    print("\n[sum(supply_demand) 확인]: ", sum(supply_demand))
-
-    # Center 처리 조건
     if sum(supply_demand[:-1]) > 0:  # 공급 부족이 아닌 경우 center 제거
         last_key = max(station_names_data.keys())
         removed_value = station_names_data.pop(last_key)  # 마지막 항목(center) 제거
@@ -365,18 +450,13 @@ def station_names(zone, LSTM_pred_fin):
     # # 디버깅: center 처리 후 station_names 출력
     # for index, station_name in station_names_data.items():
     #     print(f"center 처리 후 - Index: {index}, Station Name: {station_name}")
-            
     return station_names_data
-            # {0: 'ST-786', 
-            # 1: 'ST-3108', 
-            # 2: 'ST-963', 
-            # ...
-            # 15: 'ST-3208'} 
 
 def Bike_Redistribution(zone, LSTM_pred_fin):
     supply_demand = make_supply_list(zone, LSTM_pred_fin) # list 형태
     zone_distance = load_zone_distance(zone) # csv 파일을 (각 row는 tuple, 전체는 list) 형태로 변환
     
+    # Center 처리 조건 (zone_distance)
     if sum(supply_demand[:-1]) > 0:  # 공급 부족이 아닌 경우 zone_distance에서 center 제거
         zone_distance.pop()  # 마지막 항목(center) 제거
         print(f"\n[INFO] Center가 zone_distance에서 제거되었습니다!")
@@ -570,96 +650,7 @@ def save_result(zone, LSTM_pred_fin):
 
 
 # ----- FLASK ------------------------------------------------------------------------------------------------------------------------#
-# 메인 페이지
-@app.route('/')
-def index():
-    return render_template('nuri_amend.html')
 
-@app.route('/zone1')
-def zone1_page():
-    tmap_api_key = secrets['api_keys']['tmap_api_key']    # 기본값 설정
-    zone = None
-    month = None
-    day = None
-    hour = None
-    buttons_visible = False    
-
-    if request.args:  # 사용자가 폼을 제출했을 때
-        zone = 'zone1'
-        month = request.args.get('month') # 'month' 입력 필드의 값
-        day = request.args.get('day')    # 'day' 입력 필드의 값
-        hour = request.args.get('hour')   # 'hour' 입력 필드의 값
-        month, day , hour = user_input_datetime()
-        zone_id_list = load_zone_id(zone) # ⭐️
-
-        print(f"사용자 입력값 - month: {month}, day: {day}, hour: {hour}")
-
-        # LGBM 클래스 메서드 호출
-        try:
-            # LGBM 데이터 병합 및 예측
-            LGBM_time = LGBMRegressor.get_LGBMtime()  # 시간 정보 가져오기           
-            input_df = LGBMRegressor.merge_LGBM_facility_time()    
-            LGBM_pred = LGBMRegressor.LGBMpredict()  
-
-            # LSTM 168시간 이전 데이터 계산
-            target_DT = datetime(2024, int(month), int(day), int(hour))  # 예시 연도
-            before168_DT = target_DT - timedelta(hours=168)
-            
-            # 빅쿼리에서 데이터 조회
-            project_id = "multi-final-project"
-            dataset_id = "Final_table_NURI"
-            table_id = "LSTM_data_for_forecast_cloudsql"
-            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-            time_series_data = LSTM_Bidirectional.get_time_series_data(project_id, dataset_id, table_id, before168_DT, target_DT)
-            
-            # LSTM 모델 초기화
-            lstm_model = LSTM_Bidirectional(model_path='./model/LSTM_Bidirectional_model_1202.pth')
-            print("LSTM Bidirectional model loaded.")
-
-            # 예측 수행
-            LSTM_pred_fin = lstm_model.predict(project_id, dataset_id, table_id, before168_DT, target_DT, device)
-
-            LGBM_pred_fin = LGBM_pred[np.newaxis, :]
-
-            # BigQuery 데이터 가져오기
-            stocks = load_stock(zone)
-            merged_result = merge_result(zone,LSTM_pred_fin)
-
-            # session['predictions'] = predictions.tolist()
-
-
-            # 결과값 추가 가공 메서드 호출
-            zone_distances = load_zone_distance(zone)
-            processed_data = find_station_status(zone,LSTM_pred_fin)  # 상태 계산
-            # 가공된 결과 확인
-            supply_demand = make_supply_list(zone,LSTM_pred_fin)  # 수요-공급 리스트 생성
-            # Zone Names 생성
-            station_name_data = station_names(zone,LSTM_pred_fin)
-            #----------
-            Bike_Redistribution_result, x, solve_status = Bike_Redistribution(zone, LSTM_pred_fin)
-            print(f"Bike Redistribution Result: {Bike_Redistribution_result}")
-            print(f"Solve Status: {solve_status}")
-            # results_dict = save_result(zone) 나한테 없는 코드
-            # simplified_moves = simplify_movements(zone, x, station_name_data)
-            # simple_moves = final_route(x, station_name_data)
-            # final_simple_moves = get_simple_moves(zone)
-            
-            buttons_visible = True  # 버튼 활성화
-        except Exception as e:
-            print(f"Error during LGBM processing: {str(e)}")
-            LGBM_pred = []
-            stocks = []
-        
-        if month and day and hour:
-            # 폼이 제출되면 버튼을 보이도록 설정
-            buttons_visible = True
-            month = str(month).zfill(2)
-            day = str(day).zfill(2)
-            hour = str(hour).zfill(2)
-
-    # GET 요청 시 HTML 폼 렌더링
-    return render_template('zone1.html',buttons_visible = buttons_visible, tmap_api_key = tmap_api_key, month=month, day=day, hour=hour)
 
 @app.route('/zone2')
 def zone2_page():
