@@ -24,6 +24,8 @@ GOOGLE_CREDENTIALS_PATH = secrets['bigquery']['credentials_file']
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = GOOGLE_CREDENTIALS_PATH
 client = bigquery.Client()
 
+# ----- ZONE PAGE ------------------------------------------------------------------------------------------------------------------------#
+
 # 메인 페이지
 @app.route('/')
 def index():
@@ -32,17 +34,14 @@ def index():
 @app.route('/zone1')
 def zone1_page():
     tmap_api_key = secrets['api_keys']['tmap_api_key']    # 기본값 설정
-    zone = None
-    month = None
-    day = None
-    hour = None
+    zone, month, day, hour = None, None, None, None
     buttons_visible = False    
 
     if request.args:  # 사용자가 폼을 제출했을 때
         zone = 'zone1'
-        month = request.args.get('month') # 'month' 입력 필드의 값
-        day = request.args.get('day')    # 'day' 입력 필드의 값
-        hour = request.args.get('hour')   # 'hour' 입력 필드의 값
+        month = request.args.get('month', default=None)
+        day = request.args.get('day', default=None)
+        hour = request.args.get('hour', default=None)
         month, day , hour = user_input_datetime()
         zone_id_list = load_zone_id(zone) # ⭐️
 
@@ -72,15 +71,11 @@ def zone1_page():
 
             # 예측 수행
             LSTM_pred_fin = lstm_model.predict(project_id, dataset_id, table_id, before168_DT, target_DT, device)
-
             LGBM_pred_fin = LGBM_pred[np.newaxis, :]
 
             # BigQuery 데이터 가져오기
             stocks = load_stock(zone)
             merged_result = merge_result(zone,LSTM_pred_fin)
-
-            # session['predictions'] = predictions.tolist()
-
 
             # 결과값 추가 가공 메서드 호출
             zone_distances = load_zone_distance(zone)
@@ -90,10 +85,7 @@ def zone1_page():
             # Zone Names 생성
             station_name_data = station_names(zone,LSTM_pred_fin)
             #----------
-            Bike_Redistribution_result, x, solve_status = Bike_Redistribution(zone, LSTM_pred_fin)
-            print(f"Bike Redistribution Result: {Bike_Redistribution_result}")
-            print(f"Solve Status: {solve_status}")
-            # results_dict = save_result(zone) 나한테 없는 코드
+            results_dict = Bike_Redistribution(zone, LSTM_pred_fin)
             # simplified_moves = simplify_movements(zone, x, station_name_data)
             # simple_moves = final_route(x, station_name_data)
             # final_simple_moves = get_simple_moves(zone)
@@ -113,6 +105,16 @@ def zone1_page():
 
     # GET 요청 시 HTML 폼 렌더링
     return render_template('zone1.html',buttons_visible = buttons_visible, tmap_api_key = tmap_api_key, month=month, day=day, hour=hour)
+
+@app.route('/zone2')
+def zone2_page():
+    tmap_api_key = secrets['api_keys']['tmap_api_key']    # 기본값 설정
+    zone = None # ⭐️
+    month = None
+    day = None
+    hour = None
+    buttons_visible = False
+    return render_template('zone2.html',buttons_visible = buttons_visible, tmap_api_key = tmap_api_key, month=month, day=day, hour=hour)
 
 #-- LSTM START -----------------------------------------------------------------------------------------------------------------#
 # 모델 클래스 정의
@@ -218,7 +220,6 @@ def load_LatLonName():
                 "Longitude": row['Longitude'],
                 "Station_name": row['Station_name']
             }
-        print("\nstation_LatLonName_dict: ", station_LatLonName_dict)
         return station_LatLonName_dict # ★여기 Flask에서 한글 깨지는거 수정해야 함.★
 
 #-- LGBM START -----------------------------------------------------------------------------------------------------------------#
@@ -232,7 +233,6 @@ class LGBMRegressor:
             next(reader)
             for row in reader:
                 LGBM_facility_list.append(tuple(row))
-        # print("\nLGBM_facility_list: ", LGBM_facility_list)
         return LGBM_facility_list
         # {'Rental_Location_ID': 'ST-2675', 'bus_stop': '11', 'park': '5', 'school': '1', 'subway': '0', 'riverside': '0', 'month': '', 'hour': '', 'weekday': ''}
         # [('ST-1171', 6, 2, 0, 2, 1, None, None, None), ...] 한 줄은 tuple, 전체는 list
@@ -275,11 +275,6 @@ class LGBMRegressor:
                 input_df[col] = input_df[col].astype('int')
             else:
                 print(f"{col} is not categorical nor numeric")
-
-        # 디버깅 출력
-        print("\nDataFrame after processing:")
-        print(input_df.dtypes)
-        print(input_df.head())
         
         return input_df
         # 'Rental_Location_ID', 'bus_stop', 'park', 'school', 'subway', 'riverside', 'month', 'hour', 'weekday'
@@ -345,12 +340,8 @@ def merge_result(zone, LSTM_pred_fin):
     # 2. 앙상블
     ensemble_array = np.rint((LGBM_pred_fin + LSTM_pred_fin) / 2).astype(int)  # shape (1, N)    # rint : 가장 가까운 정수로 반올림
     ensemble_list = ensemble_array[0].tolist()
-    # print("\nensemble_list: ", ensemble_list, "type(ensemble_list): ", type(ensemble_list))
 
-    # (선택) LGBM 예측을 올림하기 원한다면, np.ceil 또는 np.round 후 list 변환
-    # LGBM_pred_list = np.ceil(LGBM_pred_fin)[0].astype(int).tolist()
-
-    # 3. stock 병합
+    # 3. stock과 prediction 병합
     stock_list = load_stock(zone)
         #         [{
             #     "Date": "Wed, 01 Mar 2023 00:00:00 GMT",
@@ -395,17 +386,6 @@ def find_station_status(zone,LSTM_pred_fin):
     station_status_dict = merged_result
     return station_status_dict # dict 형태
 
-def load_zone_distance(zone):
-    zone_distance = []
-    with open(f'./data/{zone}_distance.csv', 'r') as fr:
-        lines = fr.readlines()
-        for line in lines[1:]:  # header 건너뛰기
-            values = str(line).split(",")            # ['ST-786', '0', '2.83', '1.78', '2.18']
-            distance_values = values[1:]             # 맨 앞에 ST-..는 건너뛰기 -> ['0', '2.83', '1.78', '2.18']
-            row = list(map(float, distance_values))  # [0.0, 2.83, 1.78, 2.18]
-            zone_distance.append(row)
-    return zone_distance
-
 def make_supply_list(zone,LSTM_pred_fin):
         station_status_dict = find_station_status(zone,LSTM_pred_fin)
         # "ST-1561": {
@@ -426,17 +406,28 @@ def make_supply_list(zone,LSTM_pred_fin):
                 print(f"ERROR! {station_id} : no status info")
         if sum(supply_demand) < 0:
             supply_demand.append(int((-1) * sum(supply_demand)))  # supply_demand에 center 추가
-            print("def make_supply_list로 supply list에 Center 적재량 추가!")
-        return supply_demand
+            print("[make_supply_list] supply demand에 Center 양수 (Center 추가)")
+        else:
+            print("[make_supply_list] supply demand에 Center 없음")
+            
+        return supply_demand # Center 처리 완료
+
+def load_zone_distance(zone): # 일단 Center까지 다 가져옴
+    zone_distance = []
+    with open(f'./data/{zone}_distance.csv', 'r') as fr:
+        lines = fr.readlines()
+        for line in lines[1:-1]:  # header 건너뛰기 + 마지막꺼 일단 append 안 함
+            values = str(line).split(",")            # ['ST-786', '0', '2.83', '1.78', '2.18']
+            distance_values = values[1:]             # 맨 앞에 ST-..는 건너뛰기 -> ['0', '2.83', '1.78', '2.18']
+            row = list(map(float, distance_values))  # [0.0, 2.83, 1.78, 2.18]
+            zone_distance.append(row)
+    return zone_distance # 일단 Center까지 다 가져옴
 
 def station_names(zone, LSTM_pred_fin):
     station_names_data = {}
-    with open(f'./data/{zone}_distance.csv', 'r') as fr: 
-        first_line = fr.readline()
-        first_line_list = first_line.strip().split(',')
-        for i in range(1, len(first_line_list)):
-            station_name = first_line_list[i]
-            station_names_data[i] = station_name  # -> 일단 center까지 모두 추가
+    for i, supply in enumerate(supply_demand):
+        station_name = supply[i]
+        station_names_data[i] = station_name
 
     # Center 처리 조건 (station_names_data)
     supply_demand = make_supply_list(zone, LSTM_pred_fin)
@@ -447,87 +438,84 @@ def station_names(zone, LSTM_pred_fin):
     else:  # 공급 부족인 경우 center 유지
         print(f"\n[INFO] supply_demand가 부족하여 station_names_data에서 Center 정보 유지.")
 
-    # # 디버깅: center 처리 후 station_names 출력
-    # for index, station_name in station_names_data.items():
-    #     print(f"center 처리 후 - Index: {index}, Station Name: {station_name}")
     return station_names_data
 
 def Bike_Redistribution(zone, LSTM_pred_fin):
     supply_demand = make_supply_list(zone, LSTM_pred_fin) # list 형태
     zone_distance = load_zone_distance(zone) # csv 파일을 (각 row는 tuple, 전체는 list) 형태로 변환
+    station_names_data = station_names(zone, LSTM_pred_fin)
+    station_status_dict = find_station_status(zone,LSTM_pred_fin)
     
-    # Center 처리 조건 (zone_distance)
+    # 0. Center 처리 조건 (zone_distance)
     if sum(supply_demand[:-1]) > 0:  # 공급 부족이 아닌 경우 zone_distance에서 center 제거
         zone_distance.pop()  # 마지막 항목(center) 제거
         print(f"\n[INFO] Center가 zone_distance에서 제거되었습니다!")
     else:  # 공급 부족인 경우 center 유지
         print(f"\n[INFO] 공급이 부족하여 zone_distance에서 Center 정보 유지.")
 
-    # 데이터 정의
+    # ----- Bike Redistribution 시작 ------------------------------------------------------------------ #
+    # 1. 데이터 정의
     supply = supply_demand # center가 처리된 상태
     num_stations = len(supply)
     cost = zone_distance
 
-    # 디버깅 코드
+        ## 디버깅 코드
     if num_stations == len(cost):
         print("\nnum_stations랑 len(cost) 일치!")
     else:
         print("\nERROR: len(num_stations)랑 len(cost) 불일치!")
 
-    # 문제 정의
+    # 2. 문제 해결 시작
     problem = pulp.LpProblem("Bike_Redistribution", pulp.LpMinimize)
 
-    # 변수 정의: x_ij는 i에서 j로 이동하는 자전거 수
+        ## 변수 정의: x_ij는 i에서 j로 이동하는 자전거 수
     x = pulp.LpVariable.dicts("x", ((i, j) for i in range(num_stations) for j in range(num_stations)), lowBound=0, cat="Integer")
 
-    # 목표 함수: 총 이동 비용 최소화
+        ## 목표 함수: 총 이동 비용 최소화
     problem += pulp.lpSum(cost[i][j] * x[i, j] for i in range(num_stations) for j in range(num_stations))
 
-    # 여유 대여소에서 자전거 이동량 제한
+        ## 여유 대여소에서 자전거 이동량 제한
     for i in range(num_stations):
         if supply[i] > 0:  # 여유 대여소
             problem += pulp.lpSum(x[i, j] for j in range(num_stations) if i != j) <= supply[i]
 
-    # 부족 대여소의 수요 충족
+        ## 부족 대여소의 수요 충족
     for j in range(num_stations):
         if supply[j] < 0:  # 부족 대여소
             problem += pulp.lpSum(x[i, j] for i in range(num_stations) if i != j) >= -supply[j]
                 
-    # 부족 대여소에서 자전거 이동 금지 조건 추가 (새로 추가되는 조건)
+        ## 부족 대여소에서 자전거 이동 금지 조건 추가
     for i in range(num_stations):
         if supply[i] < 0:  # 부족 대여소
             problem += pulp.lpSum(x[i, j] for j in range(num_stations) if i != j) == 0
 
-    # 재고 부족인 경우에만 center(start_station)에서 출발
+        ## 제약 조건 : 재고 부족인 경우에만 center(start_station)에서 출발
     if sum(supply) < 0:
+        print("\n[INFO]: 공급 부족으로 반드시 Center에서 출발합니다!")
         start_station = num_stations - 1 # center의 인덱스
         problem += pulp.lpSum(x[start_station, j] for j in range(num_stations) if j != start_station) >= 1
+    else:
+        print("\n[INFO]: 공급 부족으로 반드시 Center에서 출발합니다!")    
         
-    # 문제 해결
-    Bike_Redistribution_result = problem.solve()
+    # 3. 문제 해결
+    Distibution_result = problem.solve()
+
+    # 4. 결과 출력
     solve_status = pulp.LpStatus[problem.status]
     print("\nStatus:", solve_status)
-
-    return Bike_Redistribution_result, x, solve_status
-
-@staticmethod
-def save_result(zone, LSTM_pred_fin):
-    supply_demand = make_supply_list(zone,LSTM_pred_fin)
-    station_names_data = station_names(zone)
-    num_stations = len(supply_demand)
-    problem, x, solve_status = Bike_Redistribution(zone, LSTM_pred_fin)
-
-    station_status_dict = find_station_status(zone)
+    
+    # 5. 결과 dict로 저장
     results_dict = {"status": solve_status, "moves": []}
-
     for i in range(num_stations):
         for j in range(num_stations):
             if x[i, j].varValue is not None and x[i, j].varValue > 0:
+                print(f"x[{i}, {j}] = {x[i, j].varValue}") # 디버깅
                 from_name = station_names_data[i]
                 to_name = station_names_data[j]
+                print(f"From {from_name}({i}) to {to_name}({j}), move bikes: {x[i, j].varValue}") # 디버깅
                 cur_station_dict = station_status_dict.get(to_name)
                 if not cur_station_dict: # 디버깅 코드
-                    print("\n", to_name, "no visit!")
+                    print(f"\n{to_name}: no visit!")
                 else:
                     stock = cur_station_dict["stock"]
                     results_dict["moves"].append({
@@ -538,16 +526,15 @@ def save_result(zone, LSTM_pred_fin):
                         "bikes_moved": x[i, j].varValue,
                         "stock": stock  # 가져온 stock 값 
                     })
-                print(f"후처리 전- From {from_name}({i}) to {to_name}({j}), move bikes: {x[i, j].varValue}")
+                print(f"result_dict- From {from_name}({i}) to {to_name}({j}), move bikes: {x[i, j].varValue}")
     print("\nresults_dict: ", results_dict)
     return results_dict
 
 # #후처리 함수
-# @staticmethod
 # def simplify_movements(zone, x, station_names):
 #     supply_demand = make_supply_list(zone)
 #     zone_distance = load_zone_distance(zone)
-#     station_names = station_names(zone)
+#     station_names = station_names(zone, LSTM_pred_fin)
 #     problem, x, solve_status = Bike_Redistribution(supply_demand, zone_distance, station_names)
 
 #     simplified_moves = {}
@@ -588,7 +575,7 @@ def save_result(zone, LSTM_pred_fin):
 #     # simplified_moves 예시 : {(1, 0): 5.0, (1, 2): 4.0, (1, 6): 3.0, (4, 12): 5.0, (5, 3): 3.0, (10, 15): 6.0, (13, 14): 5.0}
 
 #     # 2. 대여소 상태 dict
-#     results_dict = save_result()
+#     results_dict = save_result(zone, LSTM_pred_fin)
 #     stock_and_status = results_dict["moves"]
 #         # results_dict["moves"].append({
 #         #     "from_station": from_name,
@@ -649,28 +636,14 @@ def save_result(zone, LSTM_pred_fin):
 
 
 
-# ----- FLASK ------------------------------------------------------------------------------------------------------------------------#
+# ---------------------------------------------------------------
+# @app.route('/test', methods=['GET'])
+# def test():
+#     print("클라이언트에서 /test 요청 도착") 
 
-
-@app.route('/zone2')
-def zone2_page():
-    tmap_api_key = secrets['api_keys']['tmap_api_key']    # 기본값 설정
-    zone = None # ⭐️
-    month = None
-    day = None
-    hour = None
-    buttons_visible = False
-
-    # GET 요청 시 HTML 폼 렌더링
-    return render_template('zone2.html',buttons_visible = buttons_visible, tmap_api_key = tmap_api_key, month=month, day=day, hour=hour)
-
-@app.route('/test', methods=['GET'])
-def test():
-    print("클라이언트에서 /test 요청 도착") 
-
-    if 'predictions' not in session:
-        return jsonify({"error": "No predictions available"}), 400
-    return jsonify({"predictions": session['predictions']})
+#     if 'predictions' not in session:
+#         return jsonify({"error": "No predictions available"}), 400
+#     return jsonify({"predictions": session['predictions']})
 
 
 
