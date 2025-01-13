@@ -1,9 +1,9 @@
 import os
+import toml
 from google.cloud import bigquery
 from flask import Flask, render_template, request, session, jsonify
 import pandas as pd
 from datetime import datetime, timedelta
-import toml
 import pytz
 import pickle
 import torch
@@ -12,8 +12,12 @@ import numpy as np
 import csv
 import pulp
 
-# secrets.toml 파일 읽기
-secrets = toml.load("./secrets/secrets.toml")
+# TOML 파일 및 상대 경로 설정
+current_dir = os.path.dirname(os.path.abspath(__file__))
+secrets_path = os.path.join(current_dir, "secrets/secrets.toml") 
+secrets = toml.load(secrets_path)
+GOOGLE_CREDENTIALS_PATH = secrets['bigquery']['credentials_file']
+JSON_PATH = os.path.join(current_dir, GOOGLE_CREDENTIALS_PATH)
 
 #Flask
 app = Flask(__name__)
@@ -21,7 +25,7 @@ app.secret_key = secrets['app']['flask_password'] # Flask의 session 사용
 
 # BigQuery 연결 설정
 GOOGLE_CREDENTIALS_PATH = secrets['bigquery']['credentials_file']
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = GOOGLE_CREDENTIALS_PATH
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = JSON_PATH
 client = bigquery.Client()
 
 # ----- ZONE PAGE ------------------------------------------------------------------------------------------------------------------------#
@@ -203,7 +207,8 @@ def user_input_datetime():
 # zone별 대여소ID 불러오기
 def load_zone_id(zone):
     zone_id_list = []
-    with open (f'./data/{zone}_station_id_list.txt', 'r') as fr:
+    zone_id_path = os.path.join(current_dir, f'data/{zone}_station_id_list.txt')
+    with open(zone_id_path, 'r') as fr:
         lines = fr.readlines()
         for line in lines:
             zone_id_list.append(line.strip())
@@ -212,7 +217,8 @@ def load_zone_id(zone):
 # 위도 경도 데이터
 def load_LatLonName():
     station_LatLonName_dict = {}
-    with open('./data/station_latlon.csv', 'r', encoding='utf-8-sig') as fr:
+    station_LatLonName_path = os.path.join(current_dir, './data/station_latlon.csv')
+    with open(station_LatLonName_path, 'r', encoding='utf-8-sig') as fr:
         reader = csv.DictReader(fr)
         for row in reader:
             station_LatLonName_dict[row['Station_ID']] = {
@@ -228,7 +234,8 @@ class LGBMRegressor:
     @staticmethod
     def load_LGBMfacility():
         LGBM_facility_list = []
-        with open ('./data/station_facilities.csv', 'r') as fr:
+        LGBM_facility_path = os.path.join(current_dir,'./data/station_facilities.csv')
+        with open (LGBM_facility_path, 'r') as fr:
             reader = csv.reader(fr)
             next(reader)
             for row in reader:
@@ -282,7 +289,8 @@ class LGBMRegressor:
     @staticmethod
     # 모델 불러오기
     def load_LGBMmodel():
-        with open ('./model/250109_NEW_LGBMmodel.pkl', 'rb') as file:
+        LGBM_model_path = os.path.join(current_dir, './model/250109_NEW_LGBMmodel.pkl')
+        with open (LGBM_model_path, 'rb') as file:
              LGBM_model = pickle.load(file)
         return LGBM_model
 
@@ -373,12 +381,15 @@ def merge_result(zone, LSTM_pred_fin):
 
     return merged_result
 
+center_flag = False # center flag : 글로벌 변수
+
 def find_station_status(zone,LSTM_pred_fin):
-    merged_result = merge_result(zone,LSTM_pred_fin)  # dict 형태 {"ST-1561": {"predicted_rental": 0, "stock": 2.0}, ...}
+    merged_result = merge_result(zone, LSTM_pred_fin)
+    # 1. abundant, deficient labeling 하기
     for stationid, item in merged_result.items():
         stock = item["stock"]
         predicted_rental = item['predicted_rental']
-        status = stock - (predicted_rental + 3) # 예측된 수요량보다 3개 더 많아야 함
+        status = stock - (predicted_rental + 3)       # 예측된 수요량보다 3개 더 많아야 함
         if status < 0:
             merged_result[stationid]["status"] = "deficient"
         else:
@@ -386,65 +397,71 @@ def find_station_status(zone,LSTM_pred_fin):
     station_status_dict = merged_result
     return station_status_dict # dict 형태
 
-def make_supply_list(zone,LSTM_pred_fin):
-        station_status_dict = find_station_status(zone,LSTM_pred_fin)
-        # "ST-1561": {
-        #     "predicted_rental": 0,
-        #     "status": "deficient",
-        #     "stock": 2.0
-        #   },
-        supply_demand = []
-        for station_id, station_info in station_status_dict.items():
-            if station_info["status"] == "deficient":
-                if station_info["stock"] == 0:
-                    supply_demand.append(-3)  # stock이 아예 없는 경우 3개 필요하다고 입력
-                else:
-                    supply_demand.append(int(-station_info["predicted_rental"]) -2)  # 예상 수요 +2 만큼 demand로 설정
-            elif station_info["status"] == "abundant": # abundant = 예상 수요보다 3개 이상의 stock을 가진 경우
-                supply_demand.append(int(station_info["stock"])) # abundant한 경우: stock 그대로 넣기
-            else:
-                print(f"ERROR! {station_id} : no status info")
-        if sum(supply_demand) < 0:
-            supply_demand.append(int((-1) * sum(supply_demand)))  # supply_demand에 center 추가
-            print("[make_supply_list] supply demand에 Center 양수 (Center 추가)")
-        else:
-            print("[make_supply_list] supply demand에 Center 없음")
-            
-        return supply_demand # Center 처리 완료
+#------해결 필요------#    
 
-def load_zone_distance(zone): # 일단 Center까지 다 가져옴
+def make_supply_list(zone,LSTM_pred_fin):
+    station_status_dict = find_station_status(zone,LSTM_pred_fin)
+    # "ST-1561": {
+    #     "predicted_rental": 0,
+    #     "status": "deficient",
+    #     "stock": 2.0
+    #   },
+    supply_demand = []
+    for station_id, station_info in station_status_dict.items():
+        if station_info["status"] == "deficient":
+            if station_info["stock"] == 0:
+                supply_demand.append(-3)  # stock이 아예 없는 경우 3개 필요하다고 입력
+            else:
+                supply_demand.append(int(-station_info["predicted_rental"]) -2)  # 예상 수요 +2 만큼 demand로 설정
+        elif station_info["status"] == "abundant": # abundant = 예상 수요보다 3개 이상의 stock을 가진 경우
+            supply_demand.append(int(station_info["stock"])) # abundant한 경우: stock 그대로 넣기
+        else:
+            print(f"ERROR! {station_id} : no status info")
+    if sum(supply_demand) < 0:
+        supply_demand.append(int((-1) * sum(supply_demand)))  # Center 재고량으로 부족한 자전거 대수만큼 추가 (양수)
+        # center_flag = True
+        print("[make_supply_list] Center supply 부족한 만큼 추가)")
+    else:
+        supply_demand.append(0)  # Center 재고량으로 0 추가
+        print("[make_supply_list] Center supply는 0")
+    return supply_demand # sum(supply_demand) >= 0 인 리스트 (길이는 Center 포함까지)
+
+def load_zone_distance(zone):
     zone_distance = []
-    with open(f'./data/{zone}_distance.csv', 'r') as fr:
+    zone_distance_path = os.path.join(current_dir, f'./data/{zone}_distance.csv')
+    with open (zone_distance_path, 'r') as fr:
         lines = fr.readlines()
-        for line in lines[1:-1]:  # header 건너뛰기 + 마지막꺼 일단 append 안 함
-            values = str(line).split(",")            # ['ST-786', '0', '2.83', '1.78', '2.18']
+        for line in lines[1:]:
+            values = line.strip().split(",")         # ['ST-786', '0', '2.83', '1.78', '2.18']
             distance_values = values[1:]             # 맨 앞에 ST-..는 건너뛰기 -> ['0', '2.83', '1.78', '2.18']
             row = list(map(float, distance_values))  # [0.0, 2.83, 1.78, 2.18]
             zone_distance.append(row)
-    return zone_distance # 일단 Center까지 다 가져옴
+    return zone_distance # Center 까지 2중 list로 append 완료
 
 def station_names(zone, LSTM_pred_fin):
+    global center_flag
+    supply_demand = make_supply_list(zone, LSTM_pred_fin)
     station_names_data = {}
     for i, supply in enumerate(supply_demand):
         station_name = supply[i]
-        station_names_data[i] = station_name
-
-    # Center 처리 조건 (station_names_data)
-    supply_demand = make_supply_list(zone, LSTM_pred_fin)
-    if sum(supply_demand[:-1]) > 0:  # 공급 부족이 아닌 경우 center 제거
-        last_key = max(station_names_data.keys())
-        removed_value = station_names_data.pop(last_key)  # 마지막 항목(center) 제거
-        print(f"\n[INFO] Station '{removed_value}'가 station_names_data에서 제거되었습니다!")
-    else:  # 공급 부족인 경우 center 유지
-        print(f"\n[INFO] supply_demand가 부족하여 station_names_data에서 Center 정보 유지.")
-
+        station_names_data[i] = station_name # {'0': -3, '1': 34, '2': -7 ... } Center까지 모두 있음
+    
+    # # Center 처리 조건 (station_names_data)
+    # supply_demand = make_supply_list(zone, LSTM_pred_fin)
+    # if sum(supply_demand[:-1]) > 0:  # 공급 부족이 아닌 경우 center 제거
+    #     last_key = max(station_names_data.keys())
+    #     removed_value = station_names_data.pop(last_key)  # 마지막 항목(center) 제거
+    #     print(f"\n[INFO] Station '{removed_value}'가 station_names_data에서 제거되었습니다!")
+    # else:  # 공급 부족인 경우 center 유지
+    #     print(f"\n[INFO] supply_demand가 부족하여 station_names_data에서 Center 정보 유지.")
+    print("\n[station_names_data]: ", station_names_data)
     return station_names_data
 
 def Bike_Redistribution(zone, LSTM_pred_fin):
-    supply_demand = make_supply_list(zone, LSTM_pred_fin) # list 형태
-    zone_distance = load_zone_distance(zone) # csv 파일을 (각 row는 tuple, 전체는 list) 형태로 변환
-    station_names_data = station_names(zone, LSTM_pred_fin)
-    station_status_dict = find_station_status(zone,LSTM_pred_fin)
+    supply_demand = make_supply_list(zone, LSTM_pred_fin)         # sum(supply_demand) >= 0 인 list (길이는 Center 포함까지)
+    zone_distance = load_zone_distance(zone)                      # Center 까지 2중 list로 append 완료
+    station_names_data = station_names(zone, LSTM_pred_fin)       # Center 까지 모두 있음
+    station_status_dict = find_station_status(zone,LSTM_pred_fin) # 
     
     # 0. Center 처리 조건 (zone_distance)
     if sum(supply_demand[:-1]) > 0:  # 공급 부족이 아닌 경우 zone_distance에서 center 제거
@@ -644,7 +661,6 @@ def Bike_Redistribution(zone, LSTM_pred_fin):
 #     if 'predictions' not in session:
 #         return jsonify({"error": "No predictions available"}), 400
 #     return jsonify({"predictions": session['predictions']})
-
 
 
 if __name__ == "__main__":
