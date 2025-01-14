@@ -1,7 +1,7 @@
 import os
 import toml
 from google.cloud import bigquery
-from flask import Flask, render_template, request, session, jsonify
+from flask import Flask, render_template, request, jsonify
 import pandas as pd
 from datetime import datetime, timedelta
 import pytz

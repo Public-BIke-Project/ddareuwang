@@ -1,5 +1,4 @@
 #가상환경 폴더
-.venv/
 venv/
 __pycache__/
 .env
@@ -16,6 +15,7 @@ secrets/
 ../rental_management_classification.xlsx
 *.xlsx
 *.ai
+
 # 임시파일
 1203.py
 1231_yuna.py
