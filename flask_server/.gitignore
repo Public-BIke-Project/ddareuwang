@@ -19,3 +19,6 @@ secrets/
 # 임시파일
 1203.py
 1231_yuna.py
+
+# python 환경 설정(유나)
+.vscode/
