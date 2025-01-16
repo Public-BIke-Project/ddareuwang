@@ -1,7 +1,7 @@
 import os
 import toml
 from google.cloud import bigquery
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, session
 from google.cloud import bigquery
 import pandas as pd
 from datetime import datetime, timedelta
@@ -46,29 +46,29 @@ def index():
 @app.route('/zone1')
 def zone1_page():
     tmap_api_key = secrets['api_keys']['tmap_api_key']
-    # 기본 값 설정
     zone, month, day, hour = None, None, None, None
-    buttons_visible = False    
+    buttons_visible = False  
+    simple_moves = []   
 
-    if request.args:  # 사용자가 폼을 제출했을 때
+    if request.args:
         zone = 'zone1'
         month = request.args.get('month', default=None)
         day = request.args.get('day', default=None)
         hour = request.args.get('hour', default=None)
-        month, day , hour = user_input_datetime()
+        month, day, hour = user_input_datetime()
         zone_id_list = load_zone_id(zone)
 
         print(f"사용자 입력값 - month: {month}, day: {day}, hour: {hour}")
-        # LGBM 클래스 메서드 호출
+
         try:
-            # ----------------- LGBM 예측 ----------------- #
+            # 1) LGBM 예측
             LGBM_facility_list = LGBMRegressor.load_LGBMfacility()
             m, h, w = LGBMRegressor.get_LGBMtime(month, day, hour)
             input_df = LGBMRegressor.merge_LGBM_facility_time(LGBM_facility_list, m, h, w)
             LGBM_pred_fin = LGBMRegressor.LGBMpredict(input_df)
 
-             # ----------------- LSTM 예측 ----------------- #
-            target_DT = datetime(2024, month, day, hour)  # ⭐ int로 안 바꿔도 되는지 확인!
+            # 2) LSTM 예측
+            target_DT = datetime(2024, month, day, hour)
             before168_DT = target_DT - timedelta(hours=168)
             device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
             
@@ -79,7 +79,6 @@ def zone1_page():
                 before168_DT=before168_DT,
                 target_DT=target_DT
             )
-
             lstm_model = LSTM_Bidirectional(model_path=LSTM_model_path)
             LSTM_pred_fin = lstm_model.predict(
                 project_id="multi-final-project",
@@ -91,32 +90,46 @@ def zone1_page():
             )
             print("LSTM Bidirectional model loaded.")
 
-
-            # BigQuery 데이터 가져오기
+            # 3) BigQuery 데이터 가져오기
             stock_list = load_stock(zone, month, day, hour)
             merged_result = merge_result(LGBM_pred_fin, LSTM_pred_fin, stock_list, input_df)
 
-            # 자전거 재배치 데이터 형성
-            # 1. 수요 부족/충분
+            # 4) 자전거 재배치 로직
             station_status_dict = find_station_status(merged_result)
-            # (D-2) supply_demand 계산
-            supply_demand = make_supply_list(zone, station_status_dict)
-            # (D-3) 거리 정보
+            supply_demand = make_supply_list(zone_id_list, station_status_dict)
             zone_distance = load_zone_distance(zone)
-            # (D-4) 최적화
-            results_dict = Bike_Redistribution(supply_demand, zone_distance, station_status_dict)
+            results_dict = Bike_Redistribution(zone, supply_demand, zone_distance, station_status_dict)
+
+            # 5) 후처리 로직 (simplify_movements)
+            station_names_dict = results_dict.get("station_names_dict", {})
+            final_dict = simplify_movements(results_dict, station_names_dict)
+
+            # 6) 이제 위도/경도 데이터 로드
+            station_LatLonName_dict = load_LatLonName()
+
+            # 7) final_route 호출
+            simple_moves = final_route(
+                results_dict,
+                final_dict,
+                station_status_dict,
+                station_LatLonName_dict
+            )
+
+            # 8) 세션에 데이터 저장
+            session['results_dict'] = results_dict
+            session['final_dict'] = final_dict
+            session['station_status_dict'] = station_status_dict
+            session['station_LatLonName_dict'] = station_LatLonName_dict
 
             # 완료 시 버튼 활성화
             buttons_visible = True
 
         except Exception as e:
             print(f"[ERROR] {str(e)}")
-            # 예외 발생 시에도 최소한의 정보만 넘김
-            stocks = []
-            results_dict = {}
+            buttons_visible = False
             pass
 
-        # 최종적으로 month/day/hour를 2자리 문자열로 변환해서 렌더링에 전달
+        # month/day/hour를 2자리 문자열로 변환
         month_str = str(month).zfill(2)
         day_str = str(day).zfill(2)
         hour_str = str(hour).zfill(2)
@@ -129,13 +142,14 @@ def zone1_page():
             day=day_str,
             hour=hour_str
         )
-    
-    # 사용자가 아무 것도 선택 안 했을 때(단순 GET)
+
+    # 단순 GET 요청
     return render_template(
         'zone1.html',
         buttons_visible=buttons_visible,
         tmap_api_key=tmap_api_key
     )
+
 @app.route('/zone2')
 def zone2_page():
     tmap_api_key = secrets['api_keys']['tmap_api_key']
@@ -178,6 +192,7 @@ def load_LatLonName():
                 "Longitude": row['Longitude'],
                 "Station_name": row['Station_name']
             }
+        session['station_LatLonName_dict'] = station_LatLonName_dict
         return station_LatLonName_dict # ★여기 Flask에서 한글 깨지는거 수정해야 함.★
     
 #------------------ 모델 예측 준비 함수 END ------------------------------------------------------------------#
@@ -362,10 +377,12 @@ def load_stock(zone, month, day, hour):
     """
     query_job = client.query(query)
     results = query_job.result()
+    # print("\nstock_list -> 해당 zone만 선별함") # 
     for row in results:
         stock_list.append(dict(row))
+        # print(row)
     # print("\nlen(stock_list): ", len(stock_list))
-    return stock_list
+    return stock_list # 순서 X
     # stock_list = [{
     #               'Date': datetime.date(2023, 4, 2), 
     #               'Time': 6, 
@@ -393,6 +410,7 @@ def merge_result(LGBM_pred_fin, LSTM_pred_fin, stock_list, input_df):
         rental_location_id = stock_list[i]["Rental_location_ID"]
         stock = stock_list[i]["stock"]
         selectedzone_stock_dict[rental_location_id] = stock
+        # {'ST-1234': 3.0, 'ST-2345: 5.0 ...}
     
     # 디버깅 출력
     # print("\nselectedzone_stock_dict")
@@ -414,10 +432,10 @@ def merge_result(LGBM_pred_fin, LSTM_pred_fin, stock_list, input_df):
         #     print(f"{stationid}: not in {zone} (다른 관리권역에 있거나 31개에 포함되지 않음)")
 
     # 디버깅 출력
-    print("\nmerged_result")
-    for key, value in merged_result.items():
-        print(f"{key}: {value}")
-    return merged_result
+    # print("\nmerged_result")
+    # for key, value in merged_result.items():
+    #     print(f"{key}: {value}")
+    return merged_result # 순서X
             # {
             #   "ST-1577": { "predicted_rental": 3, "stock": 1 },
             #   "ST-784": { "predicted_rental": 5, "stock": 4 }, ...
@@ -441,24 +459,30 @@ def find_station_status(merged_result): #abundant, deficient labeling 하기
             "status": "abundant"                
         }
     station_status_dict = merged_result
-    return station_status_dict # center 까지 포함 (필수)
+    session['station_status_dict'] = station_status_dict
+
+    return station_status_dict # center 까지 포함 (필수) # 순서 X
 
 center_flag = False # Center 처리를 위해 글로벌 변수 사용
 
-def make_supply_list(zone, station_status_dict):
+def make_supply_list(zone_id_list, station_status_dict):
     global center_flag
-    # station_status_dict = 
+    # station_status_dict =        # 순서 X
     # "ST-1561": {
     #     "predicted_rental": 0,
     #     "status": "deficient",
     #     "stock": 2.0
     #   }, ... center 포함
+    
+    # 0. zone_id_list에 center 강제로 append
+    zone_id_list.append('center')
 
     # 1. 일단 모두 추가 (Center 값: 0)
-    zone_id_list = load_zone_id(zone)
-
     supply_demand = []
-    for station_id in zone_id_list:
+    # 디버깅 A
+    # print("\n[supply_demand] -> center 포함해야 함" )
+    # i=0
+    for station_id in zone_id_list: # ⭐여기서 zone_id_list로 순서 맞춤
         station_info = station_status_dict.get(station_id, None)
 
         if station_info is None:
@@ -476,13 +500,14 @@ def make_supply_list(zone, station_status_dict):
 
         # 2. abundant = 예상 수요보다 3개 이상의 stock을 가진 경우
         elif station_info["status"] == "abundant":
-            supply_demand.append(int(station_info["stock"])) # abundant한 경우: stock 그대로 넣기 (Center도 그대로 들어감)
+            supply_demand.append(int(station_info["stock"])) # abundant한 경우: stock 그대로 넣기
         
-        # 디버깅    
-        else:
+        else:  # 디버깅    
             print(f"ERROR! {station_id} : no status info")
-        # 디버깅 코드 : print(f"{station_id} {station_info["status"]} ", append_value)
-    
+        # 디버깅 A
+        # print(f"{i}: {station_id}")
+        # i+=1
+
     # 2. supply_demand 총합에 알맞는 center 처리
     # 총합 >= 0 인 경우 : 위의 abundant로 이미 center 값 '0'으로 처리
     # 총합 < 0 인 경우 : 아래의 코드를 실행하여 center 값을 'supply_sum'으로 처리
@@ -495,13 +520,13 @@ def make_supply_list(zone, station_status_dict):
 
     print("\n[center_flag]: ", center_flag)
     print("[supply_demand]: ", supply_demand)
+    print("[len(supply_demand)]: ", len(supply_demand))
     print("[sum(supply_demand)]: ", sum(supply_demand), "<- Center flag True일 때는 0")
     return supply_demand # 길이는 Center 포함까지 (필수)
 
 def load_zone_distance(zone):
     zone_distance = []
     zone_distance_path = os.path.join(BASE_DIR, f'./data/{zone}_distance.csv')
-    # print("\nload_zone_distance(zone) 실행!")
     with open (zone_distance_path, 'r') as fr:
         lines = fr.readlines()
         for line in lines[1:]:
@@ -509,34 +534,36 @@ def load_zone_distance(zone):
             distance_values = values[1:]             # 맨 앞에 ST-..는 건너뛰기 -> ['0', '2.83', '1.78', '2.18']
             row = list(map(float, distance_values))  # [0.0, 2.83, 1.78, 2.18]
             zone_distance.append(row)
-            # print(values)   
+            
+    print("[len(zone_distance)]: ", len(zone_distance))
     return zone_distance # center까지 모두 추가(필수)
 
 def station_index(supply_demand):
     station_index_data = {}
+    # print("\n[station_index_data]: ")
     for i, supply in enumerate(supply_demand):
-        station_index_data[i] = supply # {'0': -3, '1': 34, '2': -7 ... } Center까지 모두 있음
-    print("\n[station_index_data]: ", station_index_data)
-    return station_index_data
+        station_index_data[f'{i}'] = supply
+        # print(f"{i}: {supply}")
+    return station_index_data # {'0': -3, '1': 34, '2': -7 ... } Center까지 모두 있음
 
-def Bike_Redistribution(supply_demand, zone_distance, station_status_dict):
+def Bike_Redistribution(zone, supply_demand, zone_distance, station_status_dict):
     # 0. 인덱스(station_index)와 대여소 이름 매칭
+    zone_distance_path = os.path.join(BASE_DIR, f'./data/{zone}_distance.csv')
+    with open (zone_distance_path, 'r') as fr:
+        next(fr)  # 첫 번째 행 건너뛰기
+        stationID = [line.split(",")[0] for line in fr]
+
     station_names_dict = {}
-    for i, id in enumerate(station_status_dict.keys()):
-        station_names_dict[i] = id
-    print(f"\n station_names_dict: {station_names_dict}")
+    # print(f"\n [station_names_dict] ")
+    for i, station_name in enumerate(stationID):
+        station_names_dict[i] = station_name
+        # print(f"{i}: {station_name}")  # 디버깅
     
     # -------------------- Bike Redistribution 시작--------------------------------- #
     # 1. 데이터 정의
-    supply = supply_demand # center가 처리된 상태
-    num_stations = len(supply)
+    supply = supply_demand     # 뒤에서 'supply'를 변수명으로 사용하기 때문에 생략하면 X
+    num_stations = len(supply) # center 포함
     cost = zone_distance
-
-    ## 디버깅 코드
-    if num_stations == len(cost):
-        print("\nnum_stations랑 len(cost) 일치!")
-    else:
-        print("\nERROR: len(num_stations)랑 len(cost) 불일치!")
 
     # 2. 문제 해결 시작
     problem = pulp.LpProblem("Bike_Redistribution", pulp.LpMinimize)
@@ -578,7 +605,7 @@ def Bike_Redistribution(supply_demand, zone_distance, station_status_dict):
     for i in range(num_stations):
         for j in range(num_stations):
             if x[i, j].varValue is not None and x[i, j].varValue > 0:
-                # print(f"1. x[{i}, {j}] = {x[i, j].varValue}") # 디버깅 코드
+                # print(f"1. x[{i}, {j}] = {x[i, j].varValue}") ## 디버깅 코드
                 from_name = station_names_dict[i]
                 to_name = station_names_dict[j]
                 print(f"2. From {from_name}({i}) to {to_name}({j}), move bikes: {x[i, j].varValue}") # 디버깅
@@ -596,110 +623,154 @@ def Bike_Redistribution(supply_demand, zone_distance, station_status_dict):
                         "stock": stock  # 가져온 stock 값 
                     })
                 # print(f"3. result_dict- From {from_name}({i}) to {to_name}({j}), move bikes: {x[i, j].varValue}")
+
+    # -------------------- Bike Redistribution 끝--------------------------------- #
+
+    # -------------------- 추가적인 로직 시행 -------------------------------------- #
+
+    # (추가) station_names_dict를 결과에 담기
+    results_dict["station_names_dict"] = station_names_dict
+    
+    # (추가) x값을 result_dict에 같이 저장
+    x_values_dict = {}
+    for (i, j) in x.keys():
+        key_str = f"{i},{j}"
+        x_values_dict[key_str] = x[i, j].varValue
+    results_dict["x_values"] = x_values_dict
+
     # 디버깅 코드
-    print("\n[result_check] 0115 기준 디버깅 필요. 일단 return으로 반환은 됨.")
-    result_check = results_dict.get("moves")
-    for move_value in result_check:  # 리스트의 각 원소를 반복
-        print(move_value)
+    # print("\n[result_check]")
+    # result_check = results_dict.get("moves")
+    # for move_value in result_check:  # 리스트의 각 원소를 반복
+    #     print(move_value)
+    session['results_dict'] = results_dict
+
     return results_dict
 
-# # #후처리 함수 ---> 수정 필요!!
-# def simplify_movements(supply_demand, zone_distance, station_index_data):
-#     simplified_moves = {}
-#     simplified_flag = False # 후처리 여부 확인
-#     for (i, j), var in x.items():
-#         if var.varValue is not None and var.varValue > 0:
-#             # 현재 이동량 추가
-#             move_amount = var.varValue
-#             if (j, i) in simplified_moves: #이미 저장된 반대 방향 이동 (j, i)가 존재하는지 확인
-#                 reverse_amount = simplified_moves.pop((j, i)) #반대 방향 이동량 가져오기 및 삭제
-#                 net_amount = move_amount - reverse_amount #상쇄 결과 계산(간소화된 move결과)
-                
-#                 #간소화된 move를 simplified_moves에 추가(양수인지 음수인지 고려해서)
-#                 if net_amount > 0: 
-#                     simplified_moves[(i, j)] = net_amount
-#                 elif net_amount < 0:
-#                     simplified_moves[(j, i)] = -net_amount
+# 후처리 함수 (불필요한 동선 제거)
+def simplify_movements(results_dict, station_names_dict):
+    x_values = results_dict.get("x_values", {}) 
+    simplified_moves = {}
+    simplified_flag = False
 
-#                 simplified_flag = True
-#             else:
-#                 simplified_moves[(i, j)] = move_amount
-    
-#     # 결과 출력
-#     if simplified_flag:
-#         for (i, j), amount in simplified_moves.items():
-#             from_name = station_index[i]
-#             to_name = station_index[j]
-#             print(f" 후처리 후- Move {amount} bikes from {from_name}({i}) to {to_name}({j})")
-#         print("후처리 진행됨!")
-#     else:
-#         print("후처리 불필요")
-#     return simplified_moves
+    # 1) (i, j) -> "i,j" 형태로 사용하기
+    for key_str, move_amount in x_values.items():
+        if move_amount is not None and move_amount > 0:
+            i_str, j_str = key_str.split(',')
+            i, j = int(i_str), int(j_str)
 
-# # 인덱스 추가 및 파라미터 정리 함수 #POST 대상
-# def final_route(simplified_moves, results_dict, stock_and_status, station_LatLonName_dict):
-#     # 후처리된 결과
-#     # simplified_moves 예시 : {(1, 0): 5.0, (1, 2): 4.0, (1, 6): 3.0, (4, 12): 5.0, (5, 3): 3.0, (10, 15): 6.0, (13, 14): 5.0}
+            if (j, i) in simplified_moves:  
+                reverse_amount = simplified_moves.pop((j, i))
+                net_amount = move_amount - reverse_amount
 
-#     # 1. 대여소 상태 dict
-#         # results_dict["moves"].append({
-#         #     "from_station": from_name,
-#         #     "from_index": i,
-#         #     "to_station": to_name,
-#         #     "to_index": j,
-#         #     "bikes_moved": x[i, j].varValue,
-#         # })
+                if net_amount > 0:
+                    simplified_moves[(i, j)] = net_amount
+                elif net_amount < 0:
+                    simplified_moves[(j, i)] = -net_amount
+                simplified_flag = True
+            else:
+                simplified_moves[(i, j)] = move_amount
 
-#     # 3. station_latlon
-#      = load_LatLonName()
+    # 2) 최종 결과 final_dict에 "i,j" 문자열 키로 저장
+    final_dict = {}
+    if simplified_flag:
+        for (i, j), amount in simplified_moves.items():
+            from_name = station_names_dict.get(i, f"Unknown({i})")
+            to_name   = station_names_dict.get(j, f"Unknown({j})")
+            print(f"후처리 후 - Move {amount} bikes from {from_name}({i}) to {to_name}({j})")
+            
+            key_str = f"{i},{j}"  # 문자열 키 : session 저장 때문에 형태를 문자열로
+            final_dict[key_str] = amount
 
-#     # 4. 경로 결과값 출력
-#     previous_from_station = None
-#     simple_moves = []
-#     for i, (from_station, to_station), move in enumerate(simplified_moves.items()):
-#         # visit station name
-#         key = (from_station, to_station)
-#         to_station_id= key[1]
-#         visit_station_name = station_index[to_station_id]
+        print("[INFO] 후처리 진행됨!")
+    else:
+        # 후처리 불필요 → simplified_moves 그대로 반영
+        for (i, j), amount in simplified_moves.items():
+            key_str = f"{i},{j}"
+            final_dict[key_str] = amount
+        print("[INFO] 후처리 불필요")
 
-#         # station_visit_count
-#         station_visit_count_list = [key[1] for key in simplified_moves.keys()]
+    print("final_dict: ", final_dict)
+    session['final_dict'] = final_dict  # 이제 문자열 키를 사용하므로 에러가 안 남
+    return final_dict
 
-#         # lat lon
-#         to_station_lat = station_LatLonName_dict[to_station_id]["latitude"]
-#         to_station_lon = station_LatLonName_dict[to_station_id]["longitude"]
+def final_route(results_dict, final_dict, station_status_dict, station_LatLonName_dict):
+    # 0. results_dict에서 station_names_dict 가져오기
+    station_names_dict = results_dict.get("station_names_dict", {})
+    visit_count_dict = {}
+    previous_FromStation = None
+    simple_moves = []
 
-#         visit_count_dict = {}
-#         if previous_from_station != from_station:
-#             visit_count_dict[to_station_id] = visit_count_dict.get(to_station_id, 0) + 1
-#             simple_moves.append({
-#                 "visit_index": i,
-#                 "visit_station_id": to_station,
-#                 "visit_station_name": visit_station_name,
-#                 "station_visit_count": visit_count_dict[to_station_id],
-#                 "latitude": to_station_lat, 
-#                 "longitude": to_station_lon,
-#                 "status": stock_and_status["status"],
-#                 "current_stock": stock_and_status["stock"],
-#                 "move_bikes": move
-#         })        
-#         previous_from_station = from_station
-#     print(simple_moves)
-#     return jsonify(simple_moves)
+    # 1. final_dict 키가 문자열 "i,j" 형태이므로 이를 분리하여 처리
+    for i, (key_str, move) in enumerate(final_dict.items()):
+        FromStation, ToStation = map(int, key_str.split(","))  # 문자열 "i,j" → 정수 i, j 분리
 
-# @app.route('/moves', methods=['GET'])
-# def get_simple_moves(zone):
-#     supply_demand = make_supply_list(zone)
-#     zone_distance = load_zone_distance(zone)
-#     station_index_data = station_index(zone)
-#     problem, x, solve_status = Bike_Redistribution(supply_demand, zone_distance, station_index)
-#     simple_moves = final_route(x, station_index)
-#     final_simple_moves = jsonify(simple_moves)
-#     return final_simple_moves
+        # ToStation 정보 처리
+        ToStation_ID = station_names_dict[ToStation]
+        latlon_info = station_LatLonName_dict.get(ToStation_ID, {})
+        ToStation_lat = latlon_info.get("latitude")
+        ToStation_lon = latlon_info.get("longitude")
 
+        # visit_count_dict와 simple_moves 생성
+        if previous_FromStation != FromStation:
+            visit_count_dict[ToStation_ID] = visit_count_dict.get(ToStation_ID, 0) + 1
+            StationName = station_names_dict.get(ToStation, None)
 
+            if StationName not in station_names_dict.values():  # 디버깅
+                print("[ERROR] StationName not in station_names_dict!")
 
+            status = station_status_dict.get(StationName, {}).get("status")
+            stock = station_status_dict.get(StationName, {}).get("stock")
 
+            if status is None or stock is None:
+                print("[ERROR] status == None or stock == None!")
+
+            simple_moves.append({
+                "visit_index": i,
+                "visit_station_id": ToStation,
+                "visit_station_name": StationName,
+                "visit_count": visit_count_dict[ToStation_ID],
+                "latitude": ToStation_lat,
+                "longitude": ToStation_lon,
+                "status": status,
+                "current_stock": stock,
+                "move_bikes": move
+            })
+        previous_FromStation = FromStation
+    print("\n[simple_moves]")
+    print(simple_moves)
+    return simple_moves
+
+@app.route('/final_output', methods=['GET'])
+def final_output():
+    # Flask 세션에서 데이터 가져오기
+    results_dict = session.get('results_dict', {})
+    final_dict = session.get('final_dict', {})
+    station_status_dict = session.get('station_status_dict', {})
+    station_LatLonName_dict = session.get('station_LatLonName_dict', {})
+
+    # 데이터 확인 (디버깅용)
+    print("[DEBUG] results_dict:", results_dict)
+    print("[DEBUG] final_dict:", final_dict)
+    print("[DEBUG] station_status_dict:", station_status_dict)
+    print("[DEBUG] station_LatLonName_dict:", station_LatLonName_dict)
+
+    # 데이터 부족 시 처리
+    if not results_dict or not final_dict or not station_status_dict or not station_LatLonName_dict:
+        return jsonify({"error": "Missing required session data"}), 400
+
+    # final_route 호출
+    try:
+        final_output = final_route(
+            results_dict, 
+            final_dict, 
+            station_status_dict, 
+            station_LatLonName_dict
+        )
+        return jsonify(final_output)
+    except Exception as e:
+        print("[ERROR] final_route error:", str(e))
+        return jsonify({"error": "Failed to generate final output"}), 500
 
 # ---------------------------------------------------------------
 # @app.route('/test', methods=['GET'])
