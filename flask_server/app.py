@@ -816,20 +816,20 @@ def final_route(results_dict, final_dict, station_status_dict, station_LatLonNam
 
         # visit_count_dict와 simple_moves 생성
         visit_count_dict[ToStation_ID] = visit_count_dict.get(ToStation_ID, 0) + 1
-        StationName = station_names_dict.get(ToStation, None)
+        StationName = station_names_dict.get(ToStation_ID, None)
 
         if StationName not in station_names_dict.values():  # 디버깅
             print("[ERROR] StationName not in station_names_dict!")
 
         status = station_status_dict.get(StationName, {}).get("status")
-        stock = station_status_dict.get(StationName, {}).get("stock")
+        stock = station_status_dict.get(ToStation_ID, {}).get("stock")
 
         if status is None or stock is None:
             print("[ERROR] status == None or stock == None!")
 
         move_info = {
             "visit_index": i+1,
-            "visit_station_id": ToStation,
+            "visit_station_id": ToStation_ID,
             "visit_station_name": StationName,
             "visit_count": visit_count_dict[ToStation_ID],
             "latitude": ToStation_lat,
