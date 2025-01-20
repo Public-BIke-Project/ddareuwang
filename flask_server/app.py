@@ -153,12 +153,109 @@ def zone1_page():
 @app.route('/zone2')
 def zone2_page():
     tmap_api_key = secrets['api_keys']['tmap_api_key']
-    zone = None # ⭐️
-    month = None
-    day = None
-    hour = None
-    buttons_visible = False
-    return render_template('zone2.html',buttons_visible = buttons_visible, tmap_api_key = tmap_api_key, month=month, day=day, hour=hour)
+    zone, month, day, hour = None, None, None, None
+    buttons_visible = False  
+    simple_moves = []
+
+    if request.args:
+        zone = 'zone2'
+        month = request.args.get('month', default=None)
+        day = request.args.get('day', default=None)
+        hour = request.args.get('hour', default=None)
+        month, day, hour = user_input_datetime()
+        zone_id_list = load_zone_id(zone)
+
+        print(f"사용자 입력값 - month: {month}, day: {day}, hour: {hour}")
+
+        try:
+            # 1) LGBM 예측
+            LGBM_facility_list = LGBMRegressor.load_LGBMfacility()
+            m, h, w = LGBMRegressor.get_LGBMtime(month, day, hour)
+            input_df = LGBMRegressor.merge_LGBM_facility_time(LGBM_facility_list, m, h, w)
+            LGBM_pred_fin = LGBMRegressor.LGBMpredict(input_df)
+
+            # 2) LSTM 예측
+            target_DT = datetime(2024, month, day, hour)
+            before168_DT = target_DT - timedelta(hours=168)
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            
+            time_series_data = LSTM_Bidirectional.get_time_series_data(
+                project_id="multi-final-project",
+                dataset_id="Final_table_NURI",
+                table_id="LSTM_data_for_forecast_cloudsql",
+                before168_DT=before168_DT,
+                target_DT=target_DT
+            )
+            lstm_model = LSTM_Bidirectional(model_path=LSTM_model_path)
+            LSTM_pred_fin = lstm_model.predict(
+                project_id="multi-final-project",
+                dataset_id="Final_table_NURI",
+                table_id="LSTM_data_for_forecast_cloudsql",
+                before168_DT=before168_DT,
+                target_DT=target_DT,
+                device=device
+            )
+            print("LSTM Bidirectional model loaded.")
+
+            # 3) BigQuery 데이터 가져오기
+            stock_list = load_stock(zone, month, day, hour)
+            merged_result = merge_result(LGBM_pred_fin, LSTM_pred_fin, stock_list, input_df)
+
+            # 4) 자전거 재배치 로직
+            station_status_dict = find_station_status(merged_result)
+            supply_demand = make_supply_list(zone_id_list, station_status_dict)
+            zone_distance = load_zone_distance(zone)
+            results_dict = Bike_Redistribution(zone, supply_demand, zone_distance, station_status_dict)
+
+            # 5) 후처리 로직 (simplify_movements)
+            station_names_dict = results_dict.get("station_names_dict", {})
+            final_dict = simplify_movements(results_dict, station_names_dict)
+
+            # 6) 이제 위도/경도 데이터 로드
+            station_LatLonName_dict = load_LatLonName()
+
+            # 7) final_route 호출
+            simple_moves = final_route(
+                results_dict,
+                final_dict,
+                station_status_dict,
+                station_LatLonName_dict
+            )
+
+            # 8) 세션에 데이터 저장
+            session['results_dict'] = results_dict
+            session['final_dict'] = final_dict
+            session['station_status_dict'] = station_status_dict
+            session['station_LatLonName_dict'] = station_LatLonName_dict
+
+            # 완료 시 버튼 활성화
+            buttons_visible = True
+
+        except Exception as e:
+            print(f"[ERROR] {str(e)}")
+            buttons_visible = False
+            pass
+
+        # month/day/hour를 2자리 문자열로 변환
+        month_str = str(month).zfill(2)
+        day_str = str(day).zfill(2)
+        hour_str = str(hour).zfill(2)
+
+        return render_template(
+            'zone2.html',
+            buttons_visible=buttons_visible,
+            tmap_api_key=tmap_api_key,
+            month=month_str,
+            day=day_str,
+            hour=hour_str
+        )
+
+    # 단순 GET 요청
+    return render_template(
+        'zone2.html',
+        buttons_visible=buttons_visible,
+        tmap_api_key=tmap_api_key
+    )
 # ---------------- ZONE PAGE END --------------------------------------------------------------------------#
 
 #------------------ 모델 예측 준비 함수 START -------------------------------------------------------------------------#
@@ -690,17 +787,20 @@ def simplify_movements(results_dict, station_names_dict):
             final_dict[key_str] = amount
         print("[INFO] 후처리 불필요")
 
-    print("final_dict: ", final_dict)
     session['final_dict'] = final_dict  # 이제 문자열 키를 사용하므로 에러가 안 남
+
+    # 디버깅
+    print("\n[final_dict]")
+    print(final_dict)
     return final_dict
 
 def final_route(results_dict, final_dict, station_status_dict, station_LatLonName_dict):
     # 0. results_dict에서 station_names_dict 가져오기
     station_names_dict = results_dict.get("station_names_dict", {})
     visit_count_dict = {}
-    previous_FromStation = None
     simple_moves = []
 
+    print("\n[simple_moves]")
     # 1. final_dict 키가 문자열 "i,j" 형태이므로 이를 분리하여 처리
     for i, (key_str, move) in enumerate(final_dict.items()):
         FromStation, ToStation = map(int, key_str.split(","))  # 문자열 "i,j" → 정수 i, j 분리
@@ -708,37 +808,36 @@ def final_route(results_dict, final_dict, station_status_dict, station_LatLonNam
         # ToStation 정보 처리
         ToStation_ID = station_names_dict[ToStation]
         latlon_info = station_LatLonName_dict.get(ToStation_ID, {})
-        ToStation_lat = latlon_info.get("latitude")
-        ToStation_lon = latlon_info.get("longitude")
+        ToStation_lat = latlon_info.get("Latitude")
+        ToStation_lon = latlon_info.get("Longitude")
 
         # visit_count_dict와 simple_moves 생성
-        if previous_FromStation != FromStation:
-            visit_count_dict[ToStation_ID] = visit_count_dict.get(ToStation_ID, 0) + 1
-            StationName = station_names_dict.get(ToStation, None)
+        visit_count_dict[ToStation_ID] = visit_count_dict.get(ToStation_ID, 0) + 1
+        StationName = station_names_dict.get(ToStation, None)
 
-            if StationName not in station_names_dict.values():  # 디버깅
-                print("[ERROR] StationName not in station_names_dict!")
+        if StationName not in station_names_dict.values():  # 디버깅
+            print("[ERROR] StationName not in station_names_dict!")
 
-            status = station_status_dict.get(StationName, {}).get("status")
-            stock = station_status_dict.get(StationName, {}).get("stock")
+        status = station_status_dict.get(StationName, {}).get("status")
+        stock = station_status_dict.get(StationName, {}).get("stock")
 
-            if status is None or stock is None:
-                print("[ERROR] status == None or stock == None!")
+        if status is None or stock is None:
+            print("[ERROR] status == None or stock == None!")
 
-            simple_moves.append({
-                "visit_index": i,
-                "visit_station_id": ToStation,
-                "visit_station_name": StationName,
-                "visit_count": visit_count_dict[ToStation_ID],
-                "latitude": ToStation_lat,
-                "longitude": ToStation_lon,
-                "status": status,
-                "current_stock": stock,
-                "move_bikes": move
-            })
-        previous_FromStation = FromStation
-    print("\n[simple_moves]")
-    print(simple_moves)
+        move_info = {
+            "visit_index": i,
+            "visit_station_id": ToStation,
+            "visit_station_name": StationName,
+            "visit_count": visit_count_dict[ToStation_ID],
+            "latitude": ToStation_lat,
+            "longitude": ToStation_lon,
+            "status": status,
+            "current_stock": stock,
+            "move_bikes": move
+        }
+
+        simple_moves.append(move_info)
+        print(move_info)
     return simple_moves
 
 @app.route('/final_output', methods=['GET'])
@@ -783,4 +882,4 @@ def final_output():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+   app.run(debug=True)
