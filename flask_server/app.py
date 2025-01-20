@@ -20,6 +20,7 @@ secrets = toml.load(secrets_path)                               # TOML 파일 �
 
 # Flask
 app = Flask(__name__)
+# app.config['SERVER_NAME'] = 'SeoulBikeScheduler'
 app.secret_key = secrets['app']['flask_password']               # Flask의 session 사용
 
 # model path
@@ -103,6 +104,7 @@ def zone1_page():
             # 5) 후처리 로직 (simplify_movements)
             station_names_dict = results_dict.get("station_names_dict", {})
             final_dict = simplify_movements(results_dict, station_names_dict)
+            
 
             # 6) 이제 위도/경도 데이터 로드
             station_LatLonName_dict = load_LatLonName()
@@ -120,6 +122,7 @@ def zone1_page():
             session['final_dict'] = final_dict
             session['station_status_dict'] = station_status_dict
             session['station_LatLonName_dict'] = station_LatLonName_dict
+            # session['simple_moves'] = simple_moves
 
             # 완료 시 버튼 활성화
             buttons_visible = True
@@ -838,48 +841,32 @@ def final_route(results_dict, final_dict, station_status_dict, station_LatLonNam
 
         simple_moves.append(move_info)
         print(move_info)
+        session['simple_moves'] = simple_moves
+
     return simple_moves
 
 @app.route('/final_output', methods=['GET'])
 def final_output():
+    print("OK")
     # Flask 세션에서 데이터 가져오기
     results_dict = session.get('results_dict', {})
     final_dict = session.get('final_dict', {})
     station_status_dict = session.get('station_status_dict', {})
     station_LatLonName_dict = session.get('station_LatLonName_dict', {})
+    simple_moves = session.get('simple_moves', [])
 
     # 데이터 확인 (디버깅용)
-    print("[DEBUG] results_dict:", results_dict)
-    print("[DEBUG] final_dict:", final_dict)
-    print("[DEBUG] station_status_dict:", station_status_dict)
-    print("[DEBUG] station_LatLonName_dict:", station_LatLonName_dict)
+    # print("[DEBUG] results_dict:", results_dict)
+    # print("[DEBUG] final_dict:", final_dict)
+    # print("[DEBUG] station_status_dict:", station_status_dict)
+    # print("[DEBUG] station_LatLonName_dict:", station_LatLonName_dict)
 
     # 데이터 부족 시 처리
-    if not results_dict or not final_dict or not station_status_dict or not station_LatLonName_dict:
+    if not results_dict or not final_dict or not station_status_dict or not station_LatLonName_dict or not simple_moves:
         return jsonify({"error": "Missing required session data"}), 400
 
-    # final_route 호출
-    try:
-        final_output = final_route(
-            results_dict, 
-            final_dict, 
-            station_status_dict, 
-            station_LatLonName_dict
-        )
-        return jsonify(final_output)
-    except Exception as e:
-        print("[ERROR] final_route error:", str(e))
-        return jsonify({"error": "Failed to generate final output"}), 500
-
-# ---------------------------------------------------------------
-# @app.route('/test', methods=['GET'])
-# def test():
-#     print("클라이언트에서 /test 요청 도착") 
-
-#     if 'predictions' not in session:
-#         return jsonify({"error": "No predictions available"}), 400
-#     return jsonify({"predictions": session['predictions']})
+    return jsonify(simple_moves)
 
 
 if __name__ == "__main__":
-   app.run(debug=True)
+    app.run(debug=True, host="127.0.0.1", port=5000)
