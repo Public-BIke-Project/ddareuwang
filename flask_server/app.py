@@ -828,7 +828,7 @@ def final_route(results_dict, final_dict, station_status_dict, station_LatLonNam
             print("[ERROR] status == None or stock == None!")
 
         move_info = {
-            "visit_index": i,
+            "visit_index": i+1,
             "visit_station_id": ToStation,
             "visit_station_name": StationName,
             "visit_count": visit_count_dict[ToStation_ID],
