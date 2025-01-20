@@ -110,7 +110,7 @@ function initTmap() {
 }
 // 경유지 마커 추가 함수
 function addWaypointMarkers() {
-    fetch('/moves')
+    fetch('/final_output')
         .then(response => response.json())
         .then(simple_moves => {
             console.log("마커추가api 데이터:", simple_moves);
@@ -156,7 +156,7 @@ function generateRoute() {
     // 마커를 표시
     resultMarkerArr.forEach(marker => marker.setVisible(true));
 
-    fetch('/moves') // 올바른 fetch 호출
+    fetch('/final_output') // 올바른 fetch 호출
         .then(response => response.json()) // JSON 데이터로 변환
         .then(simple_moves => {
             console.log("경로정보 호출 데이터:", simple_moves);
@@ -260,10 +260,10 @@ function displayRoute(response) {
     }
 
     // Flask에서 가져온 경유지 데이터 매칭
-    fetch('/moves')
+    fetch('/final_output')
         .then(response => response.json())
         .then(simple_moves => {
-            console.log("simple_moves_API에서 가져온 데이터:", simple_moves);
+            console.log("final_output_API에서 가져온 데이터:", simple_moves);
 
             // 경유지 데이터 처리
             resultFeatures.forEach(feature => {
