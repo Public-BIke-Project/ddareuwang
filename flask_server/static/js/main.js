@@ -338,7 +338,7 @@ function displayRoute(response) {
                             station => station.visit_station_id === properties.viaPointName.replace(/^\[\d+\]\s*/, "")
                         );
                         const stockInfo = stationData
-                            ? `현 재고: ${stationData.current_stock}\n필요 재고: ${stationData.move_bikes}`
+                            ? `상태: ${stationData.status}\n현 재고: ${stationData.current_stock}\n필요 재고: ${stationData.move_bikes}`
                             : "";
 
                         const waypointRow = document.createElement("tr");
