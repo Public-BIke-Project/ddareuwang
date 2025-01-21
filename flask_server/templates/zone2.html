@@ -3,21 +3,21 @@
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>제2권역 지도</title>
+    <title>제1권역 지도</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"> <!-- CSS 파일 연결 -->
     <script src="https://code.jquery.com/jquery-3.2.1.min.js"></script>
     <script>
         const TMAP_API_KEY = "{{ tmap_api_key }}"; // Flask에서 appKey 삽입
-        const month = "{{ month }}";
-        const day = "{{ day }}";
-        const hour = "{{ hour }}";
+        const month = "{{ month }}".padStart(2, '0');
+        const day = "{{ day }}".padStart(2, '0');
+        const hour = "{{ hour }}".padStart(2, '0');
     </script>
     <script src="https://apis.openapi.sk.com/tmap/vectorjs?version=1&appKey={{ tmap_api_key }}"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </head>
 <body>
     <h1>ㅤ</h1>
-    <h1>제2권역</h1>
+    <h1>제1권역</h1>
     {% if month and day and hour %}
     <h2>선택일시: {{ month }}월 {{ day }}일 {{ hour }}시<br>날짜를 재선택하실 경우 시간설정을 다시 해주세요.</h2>
     {% else %}
@@ -25,7 +25,7 @@
         <br>작업 날짜를 선택해 주세요.</h3>
     {% endif %}
     
-    <form action="/zone1" method="GET" class="horizontal-form" onsubmit="handleTimeUpdate(event)">
+    <form action="/zone1" method="GET" class="horizontal-form" onsubmit="updateTimeVariables()">
         <label for="month"> 월:</label>
         <select id="month" name="month" required onchange="updateDays()">
             <option value="" disabled {% if not month %}selected{% endif %}>3~11월 선택</option>
@@ -54,7 +54,7 @@
             <button id="create_traffic_route_btn">루트 생성</button>
             {% endif %}
     </form>
-    <!-- <script>
+    <script>
         function updateTimeVariables() {
             const monthSelect = document.getElementById('month');
             const daySelect = document.getElementById('day');
@@ -64,7 +64,7 @@
             day = daySelect.value.padStart(2, '0');
             hour = hourSelect.value.padStart(2, '0');
         }
-    </script> -->
+    </script>
 
     <script>
     function updateDays() {

@@ -8,33 +8,6 @@ var resultInfoArr = []; // 루트그리기
 var animationMarker; // 애니메이션 마커를 저장할 변수
 var animationInterval; // 애니메이션의 타이머
 
-function handleTimeUpdate(event) {
-    event.preventDefault();  // 폼 제출 기본 동작 방지
-    
-    // 기존 루트와 마커 초기화
-    if (resultInfoArr.length > 0) {
-        resultInfoArr.forEach(info => info.setMap(null));
-        resultInfoArr = [];
-    }
-    if (resultMarkerArr.length > 0) {
-        resultMarkerArr.forEach(marker => marker.setMap(null));
-        resultMarkerArr = [];
-    }
-    
-    // 시간 변수 업데이트
-    const form = event.target;
-    const formData = new FormData(form);
-    month = formData.get('month').padStart(2, '0');
-    day = formData.get('day').padStart(2, '0');
-    hour = formData.get('hour').padStart(2, '0');
-    
-    // URL 업데이트 (페이지 새로고침 없이)
-    const queryString = new URLSearchParams(formData).toString();
-    window.history.pushState({}, '', `${form.action}?${queryString}`);
-    
-    // 지도 다시 초기화
-    initTmap();
-}
 
 function createCustomIcon(labels, isRevisited) {
     const canvas = document.createElement('canvas');
@@ -523,8 +496,6 @@ function resetMap() {
     console.log("지도 초기화 완료");
 }
 
-
-
 //버튼 이벤트 설정
 function setupButtons() {
     document.getElementById("create_traffic_route_btn").addEventListener("click", function(e) {
@@ -533,11 +504,6 @@ function setupButtons() {
         generateRoute();
     });
 }
-    // document.getElementById("reset_map_btn").addEventListener("click", function () {
-    //     console.log("지도 초기화 버튼 클릭됨");
-    //     resetMap();
-    // });
-// }
 
 document.addEventListener("DOMContentLoaded", function () {
     console.log("페이지 로드 완료. Tmap 초기화 실행");

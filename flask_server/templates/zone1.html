@@ -8,9 +8,9 @@
     <script src="https://code.jquery.com/jquery-3.2.1.min.js"></script>
     <script>
         const TMAP_API_KEY = "{{ tmap_api_key }}"; // Flask에서 appKey 삽입
-        const month = "{{ month }}";
-        const day = "{{ day }}";
-        const hour = "{{ hour }}";
+        const month = "{{ month }}".padStart(2, '0');
+        const day = "{{ day }}".padStart(2, '0');
+        const hour = "{{ hour }}".padStart(2, '0');
     </script>
     <script src="https://apis.openapi.sk.com/tmap/vectorjs?version=1&appKey={{ tmap_api_key }}"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
