@@ -25,35 +25,46 @@
         <br>작업 날짜를 선택해 주세요.</h3>
     {% endif %}
     
-    <form action="/zone1" method="GET" class="horizontal-form">
-        <label for="month">월 :</label>
+    <form action="/zone1" method="GET" class="horizontal-form" onsubmit="updateTimeVariables()">
+        <label for="month"> 월:</label>
         <select id="month" name="month" required onchange="updateDays()">
-            <option value="" disabled selected>3~11월 선택</option>
-            {% for month in range(3, 12) %}
-            <option value="{{ month }}">{{ month }}월</option>
+            <option value="" disabled {% if not month %}selected{% endif %}>3~11월 선택</option>
+            {% for m in range(3, 12) %}
+            <option value="{{ m }}" {% if month and m == month|int %}selected{% endif %}>{{ m }}월</option>
             {% endfor %}
         </select>
-        <label for="day">일 :</label>
+        <label for="day"> 일:</label>
         <select id="day" name="day" required>
-            <option value="" disabled selected>1~31일 선택</option>
-            {% for i in range(1, 32) %}
-            <option value="{{ i }}">{{ i }}일</option>
+            <option value="" disabled {% if not day %}selected{% endif %}>1~31일 선택</option>
+            {% for d in range(1, 32) %}
+            <option value="{{ d }}" {% if day and d == day|int %}selected{% endif %}>{{ d }}일</option>
             {% endfor %}
         </select>
-        <label for="hour">시 :</label>
+        <label for="hour"> 시:</label>
         <select id="hour" name="hour" required>
-            <option value="" disabled selected>0~23시 선택</option>
-            {% for i in range(5, 24) %}
-            <option value="{{ i }}">{{ i }}시</option>
+            <option value="" disabled {% if not hour %}selected{% endif %}>5~23시 선택</option>
+            {% for h in range(5, 24) %}
+            <option value="{{ h }}" {% if hour and h == hour|int %}selected{% endif %}>{{ h }}시</option>
             {% endfor %}
         </select>
+        
+        
         <button type="submit">시간설정</button>
-        <!-- <div id="controls" class="horizontal-form"> -->
             {% if buttons_visible %}
             <button id="create_traffic_route_btn">루트 생성</button>
             {% endif %}
-        <!-- <div> -->
     </form>
+    <script>
+        function updateTimeVariables() {
+            const monthSelect = document.getElementById('month');
+            const daySelect = document.getElementById('day');
+            const hourSelect = document.getElementById('hour');
+            
+            month = monthSelect.value.padStart(2, '0');
+            day = daySelect.value.padStart(2, '0');
+            hour = hourSelect.value.padStart(2, '0');
+        }
+    </script>
 
     <script>
     function updateDays() {
@@ -70,7 +81,7 @@
         const maxDays = daysInMonth[month];
 
         // 기존 옵션 초기화
-        daySelect.innerHTML = '<option value="" disabled selected>날짜 선택</option>';
+        daySelect.innerHTML = '<option value="" disabled selected>1~31일 선택</option>';
 
         // 새로운 날짜 옵션 추가
         for (let i = 1; i <= maxDays; i++) {
@@ -81,6 +92,7 @@
         }
     }
     </script>
+    
     </div>
     <div class="content-container" id="contentContainer">
         <div id="map_div" style="width:100%; height:850px;"></div>
