@@ -813,15 +813,15 @@ def final_route(results_dict, final_dict, station_status_dict, station_LatLonNam
         latlon_info = station_LatLonName_dict.get(ToStation_ID, {})
         ToStation_lat = latlon_info.get("Latitude")
         ToStation_lon = latlon_info.get("Longitude")
+        ToStationName = latlon_info.get("Station_name")
 
         # visit_count_dict와 simple_moves 생성
         visit_count_dict[ToStation_ID] = visit_count_dict.get(ToStation_ID, 0) + 1
-        StationName = station_names_dict.get(ToStation_ID, None)
 
-        if StationName not in station_names_dict.values():  # 디버깅
-            print("[ERROR] StationName not in station_names_dict!")
+        # if ToStationName not in station_names_dict.values():  # 디버깅
+        #     print("[ERROR] StationName not in station_names_dict!")
 
-        status = station_status_dict.get(StationName, {}).get("status")
+        status = station_status_dict.get(ToStation_ID, {}).get("status")
         stock = station_status_dict.get(ToStation_ID, {}).get("stock")
 
         if status is None or stock is None:
@@ -830,7 +830,7 @@ def final_route(results_dict, final_dict, station_status_dict, station_LatLonNam
         move_info = {
             "visit_index": i+1,
             "visit_station_id": ToStation_ID,
-            "visit_station_name": StationName,
+            "visit_station_name": ToStationName,
             "visit_count": visit_count_dict[ToStation_ID],
             "latitude": ToStation_lat,
             "longitude": ToStation_lon,
