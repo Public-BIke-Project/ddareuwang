@@ -72,7 +72,7 @@ function initTmap() {
 
     // 지도 초기화
     map = new Tmapv3.Map("map_div", {
-        center: new Tmapv3.LatLng(37.50497126,127.04905021),
+        center: new Tmapv3.LatLng(37.485025, 127.050853),
         width: "50%",
         height: "700px",
         zoom: 13,
@@ -461,7 +461,6 @@ function setupButtons() {
         generateRoute();
     });
 }
-
 
 document.addEventListener("DOMContentLoaded", function () {
     console.log("페이지 로드 완료. Tmap 초기화 실행");

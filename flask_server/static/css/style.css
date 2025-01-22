@@ -4,12 +4,12 @@ body {
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    /* margin-top: 20px; */
     text-align: center;
     height: 100vh;
-    margin: 10px;
     box-sizing: border-box;
 }
+
+
 
 /* GIF 스타일 */
 .center-gif {
@@ -21,7 +21,7 @@ body {
 .button-container {
     display: flex;
     justify-content: center;
-    gap: 10px;
+    gap: 20px;
 }
 
 .button-container button {
@@ -45,7 +45,7 @@ body {
 }
 
 .controlbotton button {
-    padding: 10px 30px; /* 버튼 내부 여백 */
+    padding: 10px 20px; /* 버튼 내부 여백 */
     font-size: 16px; /* 글자 크기 */
     background-color: #000000; /* 기본 배경색 */
     color: white; /* 글자 색 */
@@ -75,51 +75,77 @@ body {
     display: flex; /* 가로 배치 */
     align-items: center; /* 세로 가운데 정렬 */
     justify-content: center; /* 중앙 정렬 */
-    gap: 10px; /* 입력 요소 간 간격 */
+    gap: 5px; /* 입력 요소 간 간격 */
     margin: 20px auto; /* 상하 여백 및 가운데 정렬 */
-    padding: 5px; /* 내부 여백 */
-    border: 1px solid #ccc; /* 테두리 설정 */
+    padding: 10px; /* 내부 여백 */
+    border: 1px solid #aadee7; /* 테두리 설정 */
     border-radius: 8px; /* 둥근 모서리 */
-    background-color: #f9f9f9; /* 명확한 배경색 */
+    background-color: #f0fdff; /* 명확한 배경색 */
 }
 
 .horizontal-form select {
-    padding: 8px;
+    padding: 10px;
     font-size: 14px;
-    margin: 0 10px; /* 좌우 간격 */
-    border: 1px solid #ccc;
+    margin-right: 20px;
+    border: 1px solid #aadee7;
     border-radius: 4px;
-    background-color: #fff; /* 드롭다운 배경색 */
+    background-color: #ffffff; /* 드롭다운 배경색 */
     cursor: pointer;
 }
 
 .horizontal-form label {
     font-size: 16px;
-    margin-right: 5px; /* 입력 필드와 레이블 간 간격 */
+    margin-right: 3px; /* 입력 필드와 레이블 간 간격 */
 }
 
 .horizontal-form input {
     width: 100px; /* 입력 필드의 고정 너비 */
     padding: 5px;
     font-size: 14px;
-    border: 1px solid #ccc;
+    border: 1px solid #ffffff;
     border-radius: 4px;
 }
+@keyframes colorChange {
+    100% { background-color: black; }
+    50% { background-color: #07c2db; }
+    100% { background-color: black; }
+}
 
-.horizontal-form button {
+.horizontal-form button[type="submit"] {
     padding: 10px 20px;
     font-size: 15px;
-    background-color: #000000;
+    background-color: hsl(0, 0%, 0%);
     color: white;
     border: none;
     border-radius: 5px;
     cursor: pointer;
     transition: background-color 0.3s ease;
 }
-
-.horizontal-form button:hover {
+.horizontal-form button#create_traffic_route_btn {
+    padding: 10px 20px;
+    font-size: 15px;
+    background-color: black;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    animation: colorChange 1.5s infinite;
+}
+.horizontal-form button[type="submit"]:hover {
     background-color: #07c2db;
 }
+
+.horizontal-form button#create_traffic_route_btn:hover {
+    background-color: #07c2db;
+    animation: none; /* 호버 시 깜박임 중지 */
+}
+
+/* 클릭 후 상태를 위한 새로운 클래스 */
+.clicked {
+    background-color: black !important;
+    animation: none !important;
+}
+
 
 /* 지도 스타일 */
 #map_div {
@@ -127,19 +153,21 @@ body {
     height: 850px;
     margin-left: 40px;
     display: block;
+    border-radius: 8px;
     position: relative; /* 지도 렌더링을 보장하기 위한 위치 설정 */
 }
 
 
 /* 스케줄 표 스타일 */
 .schedule {
-    width: 70%;
+
+    width: 60%;
     /* max-width: 600px; */
     padding: 20px;
-    border: 1px solid #ccc;
+    border: 1px solid #aadee7;
     border-radius: 8px;
     margin-right: 40px;
-    background-color: #f9f9f9;
+    background-color: #ffffff;
     display: block;
     overflow-y: auto; /* 데이터가 많을 경우 스크롤 허용 */
 }
@@ -150,23 +178,24 @@ table {
 }
 
 table, th, td {
-    border: 1px solid #ddd;
+    border: 1px solid #aadee7;
     padding: 8px;
 }
 
 th {
-    background-color: #f2f2f2;
+    background-color: #f0fdff;
     font-weight: bold;
 }
 
 /* 권역 이름 (Title) */
 .Title_Zonename {
     /* padding: 30px; */
-    margin-top: 400px;
+    margin-top: 350px;
     font-size: 16px;
     background-color: white;
     color: #000000;
     font-weight: bold;
+    line-height: 0.7;
 }
 
 

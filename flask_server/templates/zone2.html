@@ -13,35 +13,35 @@
         const hour = "{{ hour }}".padStart(2, '0');
     </script>
     <script src="https://apis.openapi.sk.com/tmap/vectorjs?version=1&appKey={{ tmap_api_key }}"></script>
-    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/sub.js') }}"></script>
 </head>
 <body>
     <div class="Title_Zonename" id="Title_Zonename">
         <h1>제2권역</h1>
+        {% if month and day and hour %}
+        <h2>작업일시: {{ month }}월 {{ day }}일 {{ hour }}시</h2><h5 style = "color:gray;"> ⓘ 작업일을 재선택하실 경우 시간등록을 다시 해주세요.</h5>
+        {% else %}
+        <h3>작업날짜를 선택 후 등록해주세요.</h3>
+        {% endif %}
     </div>
-    {% if month and day and hour %}
-    <h2>선택일시: {{ month }}월 {{ day }}일 {{ hour }}시<br>날짜를 재선택하실 경우 시간설정을 다시 해주세요.</h2>
-    {% else %}
-    <h3>따라와요 서비스는 3월~11월 성수기 내 재배치 효율 상승을 위한 모델로 설계되었습니다.
-        <br>작업 날짜를 선택해 주세요.</h3>
-    {% endif %}
     
-    <form action="/zone1" method="GET" class="horizontal-form" onsubmit="updateTimeVariables()">
-        <label for="month"> 월:</label>
+    
+    <form action="/zone2" method="GET" class="horizontal-form" onsubmit="updateTimeVariables()">
+        <label for="month">월</label>
         <select id="month" name="month" required onchange="updateDays()">
             <option value="" disabled {% if not month %}selected{% endif %}>3~11월 선택</option>
             {% for m in range(3, 12) %}
             <option value="{{ m }}" {% if month and m == month|int %}selected{% endif %}>{{ m }}월</option>
             {% endfor %}
         </select>
-        <label for="day"> 일:</label>
+        <label for="day">일</label>
         <select id="day" name="day" required>
             <option value="" disabled {% if not day %}selected{% endif %}>1~31일 선택</option>
             {% for d in range(1, 32) %}
             <option value="{{ d }}" {% if day and d == day|int %}selected{% endif %}>{{ d }}일</option>
             {% endfor %}
         </select>
-        <label for="hour"> 시:</label>
+        <label for="hour">시</label>
         <select id="hour" name="hour" required>
             <option value="" disabled {% if not hour %}selected{% endif %}>5~23시 선택</option>
             {% for h in range(5, 24) %}
@@ -50,9 +50,9 @@
         </select>
         
         
-        <button type="submit">시간설정</button>
+        <button type="submit">등록하기</button>
             {% if buttons_visible %}
-            <button id="create_traffic_route_btn">루트 생성</button>
+            <button id="create_traffic_route_btn">루트생성</button>
             {% endif %}
     </form>
     <script>
@@ -101,8 +101,10 @@
             <h2>재배치 스케줄</h2>
             <table>
                 <tr>
+                    <th>순서</th>
                     <th>시간</th>
                     <th>위치</th>
+                    <th>상태</th>
                     <th>작업</th>
                 </tr>
             </table>
