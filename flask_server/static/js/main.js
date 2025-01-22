@@ -75,7 +75,7 @@ function initTmap() {
         center: new Tmapv3.LatLng(37.501228,127.050362),
         width: "50%",
         height: "700px",
-        zoom: 14,
+        zoom: 13,
         zoomControl: true,
         scrollwheel: true
     });
@@ -208,63 +208,6 @@ function generateRoute() {
         });
 }
 
-// // 경로 tmap 교통정보 호출 함수
-// function generateRoute() {
-//     // 마커를 표시
-//     resultMarkerArr.forEach(marker => marker.setVisible(true));
-
-//     fetch('/final_output') // 올바른 fetch 호출
-//         .then(response => response.json()) // JSON 데이터로 변환
-//         .then(simple_moves => {
-//             console.log("경로정보 호출 데이터:", simple_moves);
-
-//         // API 데이터 기반으로 viaPoints 생성
-//         const viaPoints = simple_moves.map(move => ({
-//             viaPointId: move.visit_index.toString(), // 방문 인덱스 (문자열로 변환)
-//             viaPointName: move.visit_station_id.toString(),  // 대여소 이름
-//             viaX: move.longitude.toString(),       // 경도 (문자열로 변환)
-//             viaY: move.latitude.toString(),        // 위도 (문자열로 변환)
-//             viaTime: 900                           // 기본 시간 설정
-//         }));
-
-//         const headers = {
-//             appKey: TMAP_API_KEY
-//         };
-        
-
-//         const param = JSON.stringify({
-//             startName: "출발지",
-//             startX: "127.0717955",
-//             startY: "37.4957886",
-//             startTime: "2024"+month+day+hour+"00", /// ⭐️⭐️⭐️ 사용자 입력시간 ⭐️⭐️⭐️ ///
-//             endName: "도착지",
-//             endX: "127.0717955",
-//             endY: "37.4957886",
-//             viaPoints: viaPoints,
-//             reqCoordType: "WGS84GEO",
-//             resCoordType: "WGS84GEO",
-//             searchOption: "2" // 고정: 교통최적+최소시간
-//         });
-//         console.log("startTime:", "2024" + month + day + hour + "00");
-
-//         $.ajax({
-//             method: "POST",
-//             url: "https://apis.openapi.sk.com/tmap/routes/routeSequential30?version=1&format=json",
-//             headers: headers,
-//             async: false,
-//             contentType: "application/json",
-//             data: param,
-//             success: function (response) {
-//                 console.log("API 응답 데이터:", response); // API 응답 데이터 출력
-//                 displayRoute(response);
-//             },
-//             error: function (request, status, error) {
-//                 console.error(`Error: ${request.status}, ${request.responseText}, ${error}`);
-//             }
-//         });
-//     });
-// }
-
 // 시간 포맷 함수 -- 필수
 function formatTime(rawTime) {
     if (!rawTime || rawTime.length !== 14) return "정보 없음"; // 시간 데이터가 없거나 길이가 다르면 처리
@@ -285,10 +228,11 @@ function displayRoute(response) {
     // 기존 데이터를 모두 초기화 (헤더 제외)
     table.innerHTML = `
         <tr>
-            <th>순서<th>
+            <th>순서</th>
             <th>시간</th>
             <th>위치</th>
             <th>작업</th>
+            <th>다음 대여소 까지</th>
         </tr>
     `;
 
@@ -298,9 +242,11 @@ function displayRoute(response) {
     const tTime = `${(resultData.totalTime / 60).toFixed(0)} 분`;
     const summaryRow = document.createElement("tr");
     summaryRow.innerHTML = `
-        <td>-</td>
         <td>경로 요약</td>
-        <td>총 거리: ${tDistance}, 총 시간: ${tTime}</td>
+        <td>총 시간: ${tTime}</td>
+        <td>총 거리: ${tDistance}</td>
+        <td> </td>
+        <td>-</td>
     `;
     table.appendChild(summaryRow);
 
@@ -310,9 +256,11 @@ function displayRoute(response) {
         const arriveTime = formatTime(startFeature.properties.arriveTime) || "-";
         const startRow = document.createElement("tr");
         startRow.innerHTML = `
+            <td>-</td>
             <td>${arriveTime}</td>
             <td>배송센터 출발</td>
             <td>자전거 15대</td>
+            <td>-</td>
         `;
         table.appendChild(startRow);
     }
@@ -330,25 +278,26 @@ function displayRoute(response) {
                     const uniqueKey = `${properties.index}-${properties.viaPointName}`;
                     if (!processedStationsForTable.has(uniqueKey)) {
                         processedStationsForTable.add(uniqueKey); // 중복 제거
-                        const visit_index = properties.visit_index;
+                        const visit_index = properties.index;
                         const arriveTime = formatTime(properties.arriveTime) || "정보 없음";
                         const completeTime = formatTime(properties.completeTime) || "정보 없음";
                         const viaPointName = properties.viaPointName.replace(/^\[\d+\]\s*/, "");
-                        const detailInfo = `다음 대여소 까지: ${(properties.distance / 1000).toFixed(1)} km`;
+                        const detailInfo = `${(properties.distance / 1000).toFixed(1)} km`;
 
                         const stationData = simple_moves.find(
                             station => station.visit_station_name === properties.viaPointName.replace(/^\[\d+\]\s*/, "")
                         );
                         const stockInfo = stationData
-                            ? `상태: ${stationData.status}\n현 재고: ${stationData.current_stock}\n필요 재고: ${stationData.move_bikes}`
+                            ? `재고 ${stationData.status}<br>현 재고: ${stationData.current_stock}<br>필요 재고: ${stationData.move_bikes}`
                             : "";
 
                         const waypointRow = document.createElement("tr");
                         waypointRow.innerHTML = `
-                            <td>${visit_index}<td>
+                            <td>${visit_index}</td>
                             <td>${arriveTime} ~ ${completeTime}</td>
                             <td>${viaPointName}</td>
-                            <td>${stockInfo}<br>${detailInfo}</td>
+                            <td>${stockInfo}</td>
+                            <td>${detailInfo}</td>
                         `;
                         table.appendChild(waypointRow);
                     }
@@ -378,8 +327,10 @@ function displayRoute(response) {
                 const completeTime = formatTime(endFeature.properties.completeTime) || "-";
                 const endRow = document.createElement("tr");
                 endRow.innerHTML = `
+                    <td>-</td>
                     <td>${completeTime}</td>
                     <td>배송센터 도착</td>
+                    <td>-</td>
                     <td>-</td>
                 `;
                 table.appendChild(endRow);
