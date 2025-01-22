@@ -428,7 +428,8 @@ function startRouteAnimation(routeCoordinates) {
 // 따릉이 대여소 정보를 지도에 표시하는 함수
 function displayBikeStations() {
     // 텍스트 파일 읽기
-    fetch('/static/all_gangnamgu_stations.txt')
+    // fetch('/static/all_gangnamgu_stations.txt')
+    fetch('/data/all_gangnamgu_stations.txt')
         .then(response => response.text())
         .then(text => {
             // 텍스트 파일을 줄 단위로 배열로 변환

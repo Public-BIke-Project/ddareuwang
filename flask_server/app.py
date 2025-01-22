@@ -279,7 +279,7 @@ def load_zone_id(zone):
             zone_id_list.append(line.strip())
     return zone_id_list
 
-# 위도 경도 데이터
+# 위도 경도 이름 데이터
 def load_LatLonName():
     station_LatLonName_dict = {}
     station_LatLonName_path = os.path.join(BASE_DIR, './data/station_latlon.csv')
@@ -290,10 +290,10 @@ def load_LatLonName():
             station_LatLonName_dict[stationID] = {
                 "Latitude": row['Latitude'],
                 "Longitude": row['Longitude'],
-                "Station_name": row['Station_name']
+                "Station_name": row['Station_name'].strip()  # 앞뒤 공백 제거
             }
         session['station_LatLonName_dict'] = station_LatLonName_dict
-        return station_LatLonName_dict # ★여기 Flask에서 한글 깨지는거 수정해야 함.★
+        return station_LatLonName_dict
     
 #------------------ 모델 예측 준비 함수 END ------------------------------------------------------------------#
 
@@ -822,6 +822,10 @@ def final_route(results_dict, final_dict, station_status_dict, station_LatLonNam
         #     print("[ERROR] StationName not in station_names_dict!")
 
         status = station_status_dict.get(ToStation_ID, {}).get("status")
+        if status == 'deficient':
+            status_hangeul = '부족'
+        else:
+            status_hangeul = '충분'
         stock = station_status_dict.get(ToStation_ID, {}).get("stock")
 
         if status is None or stock is None:
@@ -834,7 +838,7 @@ def final_route(results_dict, final_dict, station_status_dict, station_LatLonNam
             "visit_count": visit_count_dict[ToStation_ID],
             "latitude": ToStation_lat,
             "longitude": ToStation_lon,
-            "status": status,
+            "status": status_hangeul,
             "current_stock": stock,
             "move_bikes": move
         }
