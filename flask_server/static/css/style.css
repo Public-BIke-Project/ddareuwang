@@ -125,6 +125,7 @@ body {
 #map_div {
     width: 60%; 
     height: 850px;
+    margin-left: 40px;
     display: block;
     position: relative; /* 지도 렌더링을 보장하기 위한 위치 설정 */
 }
@@ -132,11 +133,12 @@ body {
 
 /* 스케줄 표 스타일 */
 .schedule {
-    width: 100%;
-    max-width: 600px;
+    width: 70%;
+    /* max-width: 600px; */
     padding: 20px;
     border: 1px solid #ccc;
     border-radius: 8px;
+    margin-right: 40px;
     background-color: #f9f9f9;
     display: block;
     overflow-y: auto; /* 데이터가 많을 경우 스크롤 허용 */
@@ -157,7 +159,15 @@ th {
     font-weight: bold;
 }
 
-
+/* 권역 이름 (Title) */
+.Title_Zonename {
+    /* padding: 30px; */
+    margin-top: 400px;
+    font-size: 16px;
+    background-color: white;
+    color: #000000;
+    font-weight: bold;
+}
 
 
 /* 작은 화면 대응 */

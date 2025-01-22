@@ -16,8 +16,9 @@
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </head>
 <body>
-    <h1>ㅤ</h1>
-    <h1>제1권역</h1>
+    <div class="Title_Zonename" id="Title_Zonename">
+        <h1>제1권역</h1>
+    </div>
     {% if month and day and hour %}
     <h3>선택일시: {{ month }}월 {{ day }}일 {{ hour }}시<br>날짜를 재선택하실 경우 시간설정을 다시 해주세요.</h3>
     {% else %}
