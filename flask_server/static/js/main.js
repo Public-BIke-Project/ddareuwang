@@ -118,7 +118,7 @@ function addWaypointMarkers() {
                 lat: move.latitude.toString(),               // 위도
                 lng: move.longitude.toString(),             // 경도
                 index: move.visit_index.toString(),         // 방문 인덱스
-                label: move.visit_station_id.toString()     // 대여소 ID
+                label: move.visit_station_name.toString()     // 대여소 ID
             }));
             // 각 대여소별 방문 순서 추적
             waypoints.forEach((waypoint) => {
@@ -160,7 +160,7 @@ function generateRoute() {
             // API 데이터 기반으로 viaPoints 생성
             const viaPoints = simple_moves.map(move => ({
                 viaPointId: move.visit_index.toString(),
-                viaPointName: move.visit_station_id.toString(),
+                viaPointName: move.visit_station_name.toString(),
                 viaX: move.longitude.toString(),
                 viaY: move.latitude.toString(),
                 viaTime: 900
@@ -285,6 +285,7 @@ function displayRoute(response) {
     // 기존 데이터를 모두 초기화 (헤더 제외)
     table.innerHTML = `
         <tr>
+            <th>순서<th>
             <th>시간</th>
             <th>위치</th>
             <th>작업</th>
@@ -329,13 +330,14 @@ function displayRoute(response) {
                     const uniqueKey = `${properties.index}-${properties.viaPointName}`;
                     if (!processedStationsForTable.has(uniqueKey)) {
                         processedStationsForTable.add(uniqueKey); // 중복 제거
+                        const visit_index = properties.visit_index;
                         const arriveTime = formatTime(properties.arriveTime) || "정보 없음";
                         const completeTime = formatTime(properties.completeTime) || "정보 없음";
                         const viaPointName = properties.viaPointName.replace(/^\[\d+\]\s*/, "");
                         const detailInfo = `다음 대여소 까지: ${(properties.distance / 1000).toFixed(1)} km`;
 
                         const stationData = simple_moves.find(
-                            station => station.visit_station_id === properties.viaPointName.replace(/^\[\d+\]\s*/, "")
+                            station => station.visit_station_name === properties.viaPointName.replace(/^\[\d+\]\s*/, "")
                         );
                         const stockInfo = stationData
                             ? `상태: ${stationData.status}\n현 재고: ${stationData.current_stock}\n필요 재고: ${stationData.move_bikes}`
@@ -343,6 +345,7 @@ function displayRoute(response) {
 
                         const waypointRow = document.createElement("tr");
                         waypointRow.innerHTML = `
+                            <td>${visit_index}<td>
                             <td>${arriveTime} ~ ${completeTime}</td>
                             <td>${viaPointName}</td>
                             <td>${stockInfo}<br>${detailInfo}</td>
