@@ -232,7 +232,6 @@ function displayRoute(response) {
             <th>시간</th>
             <th>위치</th>
             <th>작업</th>
-            <th>다음 대여소 까지</th>
         </tr>
     `;
 
@@ -242,11 +241,11 @@ function displayRoute(response) {
     const tTime = `${(resultData.totalTime / 60).toFixed(0)} 분`;
     const summaryRow = document.createElement("tr");
     summaryRow.innerHTML = `
+        <td>-</td>
         <td>경로 요약</td>
         <td>총 시간: ${tTime}</td>
         <td>총 거리: ${tDistance}</td>
-        <td> </td>
-        <td>-</td>
+
     `;
     table.appendChild(summaryRow);
 
@@ -260,7 +259,6 @@ function displayRoute(response) {
             <td>${arriveTime}</td>
             <td>배송센터 출발</td>
             <td>자전거 15대</td>
-            <td>-</td>
         `;
         table.appendChild(startRow);
     }
@@ -282,13 +280,13 @@ function displayRoute(response) {
                         const arriveTime = formatTime(properties.arriveTime) || "정보 없음";
                         const completeTime = formatTime(properties.completeTime) || "정보 없음";
                         const viaPointName = properties.viaPointName.replace(/^\[\d+\]\s*/, "");
-                        const detailInfo = `${(properties.distance / 1000).toFixed(1)} km`;
+                        const detailInfo = `다음 대여소 까지 :${(properties.distance / 1000).toFixed(1)} km`;
 
                         const stationData = simple_moves.find(
                             station => station.visit_station_name === properties.viaPointName.replace(/^\[\d+\]\s*/, "")
                         );
                         const stockInfo = stationData
-                            ? `재고 ${stationData.status}<br>현 재고: ${stationData.current_stock}<br>필요 재고: ${stationData.move_bikes}`
+                            ? `<b>상태: ${stationData.status}\n현 재고: ${stationData.current_stock}\n필요 재고: ${stationData.move_bikes}</b>`
                             : "";
 
                         const waypointRow = document.createElement("tr");
@@ -296,8 +294,7 @@ function displayRoute(response) {
                             <td>${visit_index}</td>
                             <td>${arriveTime} ~ ${completeTime}</td>
                             <td>${viaPointName}</td>
-                            <td>${stockInfo}</td>
-                            <td>${detailInfo}</td>
+                            <td>${stockInfo}<br>${detailInfo}</td>
                         `;
                         table.appendChild(waypointRow);
                     }
@@ -330,7 +327,6 @@ function displayRoute(response) {
                     <td>-</td>
                     <td>${completeTime}</td>
                     <td>배송센터 도착</td>
-                    <td>-</td>
                     <td>-</td>
                 `;
                 table.appendChild(endRow);
