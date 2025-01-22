@@ -1,1 +1,1 @@
-# SeoulBike-Logistic-Scheduler
+# SeoulBike-Logistics-Scheduler
