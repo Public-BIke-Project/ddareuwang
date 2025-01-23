@@ -27,7 +27,7 @@ function createCustomIcon(labels, isRevisited) {
         ctx.lineTo(centerX + 25, centerY + 50); // 오른쪽 아래
         ctx.lineTo(centerX - 25, centerY + 50); // 왼쪽 아래
         ctx.closePath();
-        ctx.fillStyle = '#6600ff'; // 다른 색상 설정
+        ctx.fillStyle = '#8b3dff'; // 다른 색상 설정
         ctx.fill();
 
         // 기존 삼각형
@@ -36,7 +36,7 @@ function createCustomIcon(labels, isRevisited) {
         ctx.lineTo(centerX + 25, centerY - 50); // 오른쪽 위
         ctx.lineTo(centerX - 25, centerY - 50); // 왼쪽 위
         ctx.closePath();
-        ctx.fillStyle = '#6600ff'; // 색상 설정
+        ctx.fillStyle = '#8b3dff'; // 색상 설정
         ctx.fill();
     } else {
         // 기존 역삼각형 그리기 (단일 방문 시)
@@ -237,21 +237,6 @@ function displayRoute(response) {
         </tr>
     `;
 
-    // 경로 요약 정보 추가
-    // const resultData = response.properties;
-    // const tDistance = `${(resultData.totalDistance / 1000).toFixed(1)} km`;
-    // const tTime = `${(resultData.totalTime / 60).toFixed(0)} 분`;
-    // const summaryRow = document.createElement("tr");
-    // summaryRow.innerHTML = `
-    //     <td>-</td>
-    //     <td>경로 요약</td>
-    //     <td>총 시간: ${tTime}</td>
-    //     <td>총 거리: ${tDistance}</td>
-    //     <td>-</td>
-
-    // `;
-    // table.appendChild(summaryRow);
-
     // 출발지 정보 추가
     const startFeature = resultFeatures[0];
     if (startFeature && startFeature.properties) {
@@ -298,7 +283,7 @@ function displayRoute(response) {
                         waypointRow.innerHTML = `
                             <td>${visit_index}</td>
                             <td>${arriveTime} ~ ${completeTime}</td>
-                            <td>${viaPointName}</td>
+                            <td style="white-space: pre-line">${viaPointName}</td>
                             <td>${stationData.status}</td>
                             <td>${stockInfo}<br>${detailInfo}</td>
                         `;
@@ -408,7 +393,7 @@ function displayBikeStations() {
                             position: new Tmapv3.LatLng(station.stationLatitude, station.stationLongitude),
                             map: map,
                             zIndex: 100,
-                            icon: "./static/images/icon/bike_icon.png", 
+                            icon: "./static/images/icon/bike_icon_opacity.png", 
                         });
                         //Popup 객체 생성.
 		                infoWindow = new Tmapv3.InfoWindow({
