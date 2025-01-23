@@ -464,3 +464,8 @@ $( document ).ajaxStop(function() {
     //마우스 커서를 원래대로 돌린다
     $('html').css("cursor", "auto"); 
 });
+
+$( document ).submit(function() {
+    //마우스 커서를 로딩 중 커서로 변경
+    $("body").css({"cursor":"wait"});
+});

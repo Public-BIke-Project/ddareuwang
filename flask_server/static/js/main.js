@@ -283,9 +283,9 @@ function displayRoute(response) {
                         waypointRow.innerHTML = `
                             <td>${visit_index}</td>
                             <td>${arriveTime} ~ ${completeTime}</td>
-                            <td style="white-space: pre-line">${viaPointName}</td>
+                            <td style="word-break:keep-all">${viaPointName}</td>
                             <td>${stationData.status}</td>
-                            <td>${stockInfo}<br>${detailInfo}</td>
+                            <td style="word-break:keep-all">${stockInfo}<br>${detailInfo}</td>
                         `;
                         table.appendChild(waypointRow);
                     }
@@ -465,4 +465,9 @@ $( document ).ajaxStart(function() {
 $( document ).ajaxStop(function() {
     //마우스 커서를 원래대로 돌린다
     $('html').css("cursor", "auto"); 
+});
+
+$( document ).submit(function() {
+    //마우스 커서를 로딩 중 커서로 변경
+    $("body").css({"cursor":"wait"});
 });

@@ -4,15 +4,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>따랑와</title>
+    <title>따르왕</title>
+    <link rel="icon" href="static/images/icon/web_icon.png"/>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 
 <body>
-    <h2>따랑와</h2>
-    <h3>3월~11월 성수기 따릉이 재배치 효율상승 서비스</h3>
-    <img src="{{ url_for('static', filename='images/moving_bike.gif') }}" alt="Loading Animation" class="center-gif" id="loadingGif">
     
+    <div class="center-gif">
+        <h4>3월~11월 성수기 따릉이 재배치 효율상승 서비스</h4>
+        <img src="static/images/icon/logo.png" alt="Company Logo" width="447px" height="185px">
+        
+        <!-- <img src="{{ url_for('static', filename='images/moving_bike.gif') }}" alt="Loading Animation" width="400px" height="400px"> -->
+    </div>
     
     <div class="button-container">
         <a href="{{ url_for('zone1_page') }}"><button>제1권역</button></a>
