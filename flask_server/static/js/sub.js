@@ -275,16 +275,16 @@ function displayRoute(response) {
                             station => station.visit_station_name === properties.viaPointName.replace(/^\[\d+\]\s*/, "")
                         );
                         const stockInfo = stationData
-                            ? `<b>현 재고: ${stationData.current_stock}\n필요 재고: ${stationData.move_bikes}</b>`
+                            ? `<b>현 재고: ${stationData.current_stock}<br>필요 재고: ${stationData.move_bikes}</b>`
                             : "";
 
                         const waypointRow = document.createElement("tr");
                         waypointRow.innerHTML = `
                             <td>${visit_index}</td>
                             <td>${arriveTime} ~ ${completeTime}</td>
-                            <td style="white-space: pre-line">${viaPointName}</td>
+                            <td style="word-break:keep-all">${viaPointName}</td>
                             <td>${stationData.status}</td>
-                            <td>${stockInfo}<br>${detailInfo}</td>
+                            <td style="word-break:keep-all">${stockInfo}<br>${detailInfo}</td>
                         `;
                         table.appendChild(waypointRow);
                     }
