@@ -59,7 +59,7 @@ def zone1_page():
         month, day, hour = user_input_datetime()
         zone_id_list = load_zone_id(zone)
 
-        print(f"사용자 입력값 - month: {month}, day: {day}, hour: {hour}")
+        # print(f"사용자 입력값 - month: {month}, day: {day}, hour: {hour}")
 
         try:
             # 1) LGBM 예측
@@ -89,7 +89,7 @@ def zone1_page():
                 target_DT=target_DT,
                 device=device
             )
-            print("LSTM Bidirectional model loaded.")
+            # print("LSTM Bidirectional model loaded.")
 
             # 3) BigQuery 데이터 가져오기
             stock_list = load_stock(zone, month, day, hour)
@@ -168,7 +168,7 @@ def zone2_page():
         month, day, hour = user_input_datetime()
         zone_id_list = load_zone_id(zone)
 
-        print(f"사용자 입력값 - month: {month}, day: {day}, hour: {hour}")
+        # print(f"사용자 입력값 - month: {month}, day: {day}, hour: {hour}")
 
         try:
             # 1) LGBM 예측
@@ -198,7 +198,7 @@ def zone2_page():
                 target_DT=target_DT,
                 device=device
             )
-            print("LSTM Bidirectional model loaded.")
+            # print("LSTM Bidirectional model loaded.")
 
             # 3) BigQuery 데이터 가져오기
             stock_list = load_stock(zone, month, day, hour)
@@ -336,7 +336,7 @@ class LSTM_Bidirectional:
         before168_DT_str = before168_DT.strftime('%Y-%m-%d %H:%M:%S')
         target_DT_str = target_DT.strftime('%Y-%m-%d %H:%M:%S')
 
-        print(f"get_time_변환 : {before168_DT_str},{target_DT_str}")
+        # print(f"get_time_변환 : {before168_DT_str},{target_DT_str}")
 
         query = f"""    
             SELECT 
@@ -424,8 +424,8 @@ class LGBMRegressor:
                 input_df[col] = input_df[col].astype('category')
             elif col in numeric_columns: # 정수형 컬럼
                 input_df[col] = input_df[col].astype('int')
-            else:
-                print(f"ERROR: {col} is not categorical nor numeric")
+            # else:  # 디버깅 코드
+                # print(f"ERROR: {col} is not categorical nor numeric")
         
         # 디버깅 코드
         # print("input_df")
@@ -616,12 +616,12 @@ def make_supply_list(zone_id_list, station_status_dict):
         supply_demand.pop()
         supply_sum = sum(supply_demand)
         supply_demand.append(-supply_sum)
-        print("\n[INFO]공급 부족으로 center에 양수 처리 시행!")
+        # print("\n[INFO]공급 부족으로 center에 양수 처리 시행!")
 
-    print("\n[center_flag]: ", center_flag)
-    print("[supply_demand]: ", supply_demand)
-    print("[len(supply_demand)]: ", len(supply_demand))
-    print("[sum(supply_demand)]: ", sum(supply_demand), "<- Center flag True일 때는 0")
+    # print("\n[center_flag]: ", center_flag)
+    # print("[supply_demand]: ", supply_demand)
+    # print("[len(supply_demand)]: ", len(supply_demand))
+    # print("[sum(supply_demand)]: ", sum(supply_demand), "<- Center flag True일 때는 0")
     return supply_demand # 길이는 Center 포함까지 (필수)
 
 def load_zone_distance(zone):
@@ -635,7 +635,7 @@ def load_zone_distance(zone):
             row = list(map(float, distance_values))  # [0.0, 2.83, 1.78, 2.18]
             zone_distance.append(row)
             
-    print("[len(zone_distance)]: ", len(zone_distance))
+    # print("[len(zone_distance)]: ", len(zone_distance))
     return zone_distance # center까지 모두 추가(필수)
 
 def station_index(supply_demand):
@@ -698,7 +698,7 @@ def Bike_Redistribution(zone, supply_demand, zone_distance, station_status_dict)
 
     # 4. 결과 출력
     solve_status = pulp.LpStatus[problem.status]
-    print("\nStatus:", solve_status)
+    # print("\nStatus:", solve_status)
     
     # 5. 결과 dict로 저장
     results_dict = {"status": solve_status, "moves": []}
@@ -708,7 +708,7 @@ def Bike_Redistribution(zone, supply_demand, zone_distance, station_status_dict)
                 # print(f"1. x[{i}, {j}] = {x[i, j].varValue}") ## 디버깅 코드
                 from_name = station_names_dict[i]
                 to_name = station_names_dict[j]
-                print(f"2. From {from_name}({i}) to {to_name}({j}), move bikes: {x[i, j].varValue}") # 디버깅
+                # print(f"2. From {from_name}({i}) to {to_name}({j}), move bikes: {x[i, j].varValue}") ## 디버깅 코드
                 cur_station_dict = station_status_dict.get(to_name)
                 if not cur_station_dict: # 해당 대여소는 방문하지 않음
                     print(f"\n{to_name}: no visit!")
@@ -777,7 +777,7 @@ def simplify_movements(results_dict, station_names_dict):
         for (i, j), amount in simplified_moves.items():
             from_name = station_names_dict.get(i, f"Unknown({i})")
             to_name   = station_names_dict.get(j, f"Unknown({j})")
-            print(f"후처리 후 - Move {amount} bikes from {from_name}({i}) to {to_name}({j})")
+            # print(f"후처리 후 - Move {amount} bikes from {from_name}({i}) to {to_name}({j})")
             
             key_str = f"{i},{j}"  # 문자열 키 : session 저장 때문에 형태를 문자열로
             final_dict[key_str] = amount
@@ -793,8 +793,8 @@ def simplify_movements(results_dict, station_names_dict):
     session['final_dict'] = final_dict  # 이제 문자열 키를 사용하므로 에러가 안 남
 
     # 디버깅
-    print("\n[final_dict]")
-    print(final_dict)
+    # print("\n[final_dict]")
+    # print(final_dict)
     return final_dict
 
 def final_route(results_dict, final_dict, station_status_dict, station_LatLonName_dict):
@@ -803,7 +803,7 @@ def final_route(results_dict, final_dict, station_status_dict, station_LatLonNam
     visit_count_dict = {}
     simple_moves = []
 
-    print("\n[simple_moves]")
+    # print("\n[simple_moves]")
     # 1. final_dict 키가 문자열 "i,j" 형태이므로 이를 분리하여 처리
     for i, (key_str, move) in enumerate(final_dict.items()):
         FromStation, ToStation = map(int, key_str.split(","))  # 문자열 "i,j" → 정수 i, j 분리
@@ -844,14 +844,14 @@ def final_route(results_dict, final_dict, station_status_dict, station_LatLonNam
         }
 
         simple_moves.append(move_info)
-        print(move_info)
+        # print(move_info)
         session['simple_moves'] = simple_moves
 
     return simple_moves
 
 @app.route('/final_output', methods=['GET'])
 def final_output():
-    print("OK")
+    # print("final_output OK")
     # Flask 세션에서 데이터 가져오기
     results_dict = session.get('results_dict', {})
     final_dict = session.get('final_dict', {})
