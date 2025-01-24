@@ -1,14 +1,94 @@
+/* index 페이지 */
+
+.background{
+    position: absolute;
+    top: 0;
+    left: 0;
+    width : 100%;
+    height: 100%;
+    background-image: linear-gradient(to bottom right, #229efe, #67ded0);
+    z-index: -1;
+}
+
+.item_logo{
+    float:right;
+    margin: 0px 40px 0px 40px;
+    padding: 10px;
+    max-width: 150px;
+}
+.image-section {
+    flex: 1;
+    top: 0;
+    left: 0;
+}
+
+.image-section img {
+    max-width: 80%;
+    height: auto;
+}
+
+.item_list {
+    display: flex;
+    width: 80%;
+    max-width: 1000px;
+    margin: 100px 40px 0px 40px;
+    flex-direction: column;
+}
+.text-section {
+    flex: 1;
+    padding: 20px;
+}
+
+.text-section h1 {
+    font-size: 4rem;
+    color: #01304b;
+    margin-bottom: 10px;
+}
+
+.text-section h2 {
+    font-size: 1.5rem;
+    color: #01304b;
+    margin-bottom: 20px;
+}
+
+.text-section p {
+    font-size: 1.2rem;
+    line-height: 1.8;
+    color: #333;
+    margin-bottom: 30px;
+}
+/* index 페이지 버튼 */
+.button-container {
+    display: flex;
+    padding: 20px;
+    gap: 30px;
+}
+.button-container button {
+    padding: 10px 30px;
+    font-size: 16px;
+    background-color: #001c27;
+    color: white;
+    border: none;
+    border-radius: 24px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+.button-container button:hover {
+    background-color: #07c2db;
+}
+
 header {
     display: flex;
     justify-content: space-between;
     margin: 30px 40px 0px 40px;
 }
+
 .gohome button {
-    padding: 10px;
+    padding: 10px 20px;
     font-size: 14px;
     background-color: #001c27;
     border: none;
-    border-radius: 5px;
+    border-radius: 24px;
     cursor: pointer;
     transition: background-color 0.3s ease;
 }
@@ -37,37 +117,6 @@ a:visited {
     line-height: 0.01;
 }
 
-/* index 페이지 GIF 스타일 이거 문제있음 */
-.center-gif {
-    display: flex;
-    justify-content: center;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    margin: 80px 80px 80px 80px;
-    line-height: 10;
-}
-
-/* index 페이지 버튼 */
-.button-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 20px;
-}
-.button-container button {
-    padding: 10px 30px;
-    font-size: 16px;
-    background-color: #001c27;
-    color: white;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    transition: background-color 0.3s ease;
-}
-.button-container button:hover {
-    background-color: #07c2db;
-}
 
 /* 지도와 스케줄 표를 나란히 배치 */
 .content-container {
@@ -89,7 +138,7 @@ a:visited {
     margin: 20px 40px 10px 40px; /* 상하 여백 및 가운데 정렬 */
     padding: 10px; /* 내부 여백 */
     border: 1px solid #aadee7; /* 테두리 설정 */
-    border-radius: 8px; /* 둥근 모서리 */
+    border-radius: 24px; /* 둥근 모서리 */
     background-color: #f0fdff; /* 명확한 배경색 */
 }
 
@@ -98,7 +147,7 @@ a:visited {
     font-size: 14px;
     margin-right: 20px;
     border: 1px solid #aadee7;
-    border-radius: 4px;
+    border-radius: 24px;
     background-color: #ffffff; /* 드롭다운 배경색 */
     cursor: pointer;
 }
@@ -113,7 +162,7 @@ a:visited {
     /* padding: 5px; */
     font-size: 14px;
     border: 1px solid #ffffff;
-    border-radius: 4px;
+    border-radius: 24px;
 }
 @keyframes colorChange {
     100% { background-color: #001c27; }
@@ -127,7 +176,7 @@ a:visited {
     background-color: #001c27;
     color: white;
     border: none;
-    border-radius: 5px;
+    border-radius: 24px;
     cursor: pointer;
     transition: background-color 0.3s ease;
 }
@@ -137,7 +186,7 @@ a:visited {
     background-color: #001c27;
     color: white;
     border: none;
-    border-radius: 5px;
+    border-radius: 24px;
     cursor: pointer;
     animation: colorChange 1.5s infinite;
 }
@@ -163,7 +212,7 @@ a:visited {
     height: 850px;
     margin-left: 40px;
     display: block;
-    border-radius: 8px;
+    border-radius: 24px;
     position: relative; /* 지도 렌더링을 보장하기 위한 위치 설정 */
 }
 
@@ -173,7 +222,7 @@ a:visited {
     width: 60%;
     padding: 20px;
     border: 1px solid #aadee7;
-    border-radius: 8px;
+    border-radius: 24px;
     margin-right: 40px;
     background-color: #ffffff;
     display: block;

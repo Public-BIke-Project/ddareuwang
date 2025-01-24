@@ -15,6 +15,7 @@ secrets/
 ../rental_management_classification.xlsx
 *.xlsx
 *.ai
+*.psd
 
 # 임시파일
 1203.py
