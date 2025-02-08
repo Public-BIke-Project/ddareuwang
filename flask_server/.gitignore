@@ -11,6 +11,11 @@ img/
 secrets/
 *.toml
 
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
 # 대용량파일
 ../rental_management_classification.xlsx
 *.xlsx
