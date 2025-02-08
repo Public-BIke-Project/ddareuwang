@@ -777,5 +777,5 @@ def final_output():
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get('PORT', 5000))
-    app.run("127.0.0.1", port=port)
+    port = int(os.environ.get('PORT', 8080))  # Fly.io에서 자동으로 포트 설정
+    app.run(host="0.0.0.0", port=port)  # 127.0.0.1 대신 0.0.0.0 사용

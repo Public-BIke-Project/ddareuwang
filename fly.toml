@@ -1,14 +1,14 @@
-app = "dda-reu-wang"  # 앱 이름 (Fly.io에서 생성된 이름)
-primary_region = "nrt"  # 일본 리전 (Fly.io에서 선택한 리전)
+app = "dda-reu-wang"  
+primary_region = "nrt"  
 
 [build]
-  dockerfile = "flask_server/Dockerfile"  # Dockerfile 위치 지정
+  dockerfile = "flask_server/Dockerfile" 
 
 [env]
-  PORT = "8080"  # Flask가 실행될 포트 지정
+  PORT = "8080"  
 
 [http_service]
-  internal_port = 8080
+  internal_port = 8080 
   force_https = true
   auto_stop_machines = true
   auto_start_machines = true
