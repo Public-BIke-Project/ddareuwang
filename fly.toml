@@ -1,5 +1,13 @@
-app = 'dda-reu-wang'
+# fly.toml app configuration file generated for ddareuwang on 2025-02-10T15:21:30+09:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'ddareuwang'
 primary_region = 'iad'
+
+[build]
+  dockerfile = "Dockerfile"
 
 [http_service]
   internal_port = 8080
@@ -10,6 +18,6 @@ primary_region = 'iad'
   processes = ['app']
 
 [[vm]]
-  memory = '32gb'
+  memory = '4gb'
   cpu_kind = 'shared'
-  cpus = 16
+  cpus = 4
