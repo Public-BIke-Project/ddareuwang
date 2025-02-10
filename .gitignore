@@ -1,5 +1,6 @@
 #가상환경 폴더
 venv/
+.venv/
 __pycache__/
 .env
 
@@ -17,7 +18,7 @@ docker-compose.yml
 .dockerignore
 
 # 대용량파일
-../rental_management_classification.xlsx
+rental_management_classification.xlsx
 *.xlsx
 *.ai
 *.psd
