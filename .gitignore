@@ -10,6 +10,9 @@ secrets/
 # Docker
 .dockerignore
 
+# gitignore
+.gitignore
+
 # 임시파일
 app_save.py
 
