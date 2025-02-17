@@ -4,29 +4,15 @@ venv/
 __pycache__/
 .env
 
-# 프리젠테이션폴더
-img/
-../img/
-
 # Secrets
 secrets/
-*.toml
 
 # Docker
-docker-compose.yml
 .dockerignore
 
-# 대용량파일
-rental_management_classification.xlsx
-*.xlsx
-*.ai
-*.psd
-
 # 임시파일
-1203.py
-1231_yuna.py
 app_save.py
 
-# python 환경 설정(유나)
+# 환경 설정(유나)
 .vscode/
 desktop.ini
