@@ -1,0 +1,14 @@
+version: "3.8"
+
+services:
+  flask-app:
+    image: ddareuwang
+    build: .
+    ports:
+      - "8080:8080"
+    working_dir: /app
+    # volumes:
+    #   - ./flask_server:/app
+    environment:
+      - FLASK_ENV=production
+    restart: always
