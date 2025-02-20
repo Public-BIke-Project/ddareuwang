@@ -1,38 +1,39 @@
 {
-   "steps": [
-     {
-       "name": "gcr.io/cloud-builders/docker",
-       "args": [
-         "build",
-         "-t",
-         "asia-northeast3-docker.pkg.dev/${PROJECT_ID}/dda-reu-wang/dda-reu-wang",
-         "."
-       ]
-     },
-     {
-       "name": "gcr.io/cloud-builders/docker",
-       "args": [
-         "push",
-         "asia-northeast3-docker.pkg.dev/${PROJECT_ID}/dda-reu-wang/dda-reu-wang"
-       ]
-     },
-     {
-       "name": "gcr.io/google.com/cloudsdktool/cloud-sdk",
-       "entrypoint": "gcloud",
-       "timeout": "240s",
-       "args": [
-         "run",
-         "deploy",
-         "dda-reu-wang",
-         "--image",
-         "asia-northeast3-docker.pkg.dev/${PROJECT_ID}/dda-reu-wang/dda-reu-wang",
-         "--platform",
-         "managed",
-         "--region",
-         "asia-northeast3",
-         "--allow-unauthenticated"
-       ]
-     }
-   ]
- }
- 
+  "steps": [
+    {
+      "name": "gcr.io/cloud-builders/docker",
+      "args": [
+        "build",
+        "-t",
+        "asia-northeast3-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/dda-reu-wang:1.0.0",
+        "."
+      ]
+    },
+    {
+      "name": "gcr.io/cloud-builders/docker",
+      "args": [
+        "push",
+        "asia-northeast3-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/dda-reu-wang:1.0.0"
+      ]
+    },
+    {
+      "name": "gcr.io/google.com/cloudsdktool/cloud-sdk",
+      "entrypoint": "gcloud",
+      "timeout": "240s", 
+      "args": [
+        "run",
+        "deploy",
+        "dda-reu-wang",
+        "--image",
+        "asia-northeast3-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/dda-reu-wang:1.0.0",
+        "--platform",
+        "managed",
+        "--region",
+        "asia-northeast3",
+        "--allow-unauthenticated",
+        "--set-env-vars",
+        "FLASK_ENV=production"
+      ]
+    }
+  ]
+}
