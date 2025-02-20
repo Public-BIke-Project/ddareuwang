@@ -9,6 +9,7 @@ secrets/
 
 # Docker
 .dockerignore
+compose.yaml # 로컬 테스트 완료 후 compose.yaml을 ignore하고 build.json으로 배포
 
 # gitignore
 .gitignore
