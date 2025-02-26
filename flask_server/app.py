@@ -774,7 +774,6 @@ def final_output():
 
     return jsonify(simple_moves)
 
-
 if __name__ == "__main__":
-    port = int(os.environ.get('PORT', 8080))  # Fly.io에서 자동으로 포트 설정
-    app.run(host="0.0.0.0", port=port)  # 127.0.0.1 대신 0.0.0.0 사용
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host="0.0.0.0", port=port) # 다른 PC에서도 접속 가능
