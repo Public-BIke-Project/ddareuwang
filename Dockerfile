@@ -7,7 +7,7 @@ WORKDIR /flask_server
 # 3) Flask 앱 소스 복사 (compose.yaml의 volumes 매핑과 동일한 경로)
 COPY flask_server/ /flask_server
 
-# 4) 디버그: COPY 결과 확인
+# 4) 디버깅: COPY 결과 확인 -> 배포단계에서는 제거 가능
 RUN ls -R /flask_server
 
 # 5) 의존성 설치
