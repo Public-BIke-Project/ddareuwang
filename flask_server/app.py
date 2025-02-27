@@ -11,6 +11,7 @@ import torch.nn as nn
 import numpy as np
 import csv
 import pulp
+import warnings
 
 # TOML 파일 및 상대 경로 설정
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))           
@@ -34,6 +35,7 @@ table = secrets['bigquery']['table']
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = GOOGLE_CREDENTIALS_FILE
 client = bigquery.Client()
 client._use_bqstorage_api = False  # BigQuery Storage API 비활성화
+warnings.filterwarnings("ignore", message="BigQuery Storage module not found")
 
 # ---------------- ZONE PAGE START--------------------------------------------------------------------------#
 
