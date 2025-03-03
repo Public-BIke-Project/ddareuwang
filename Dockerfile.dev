@@ -1,14 +1,17 @@
-# 1) Python 3 베이스 이미지
-FROM python:3.11-bullseye
+# 1) pytorch cpu 버전
+FROM pytorch/manylinux-cpu:latest
 
 # 2) 컨테이너 내 작업 디렉터리 설정
 WORKDIR /flask_server
 
 # 3) requirements만 먼저 복사
-COPY flask_server/requirements.txt /flask_server/
+COPY flask_server/requirements.txt /flask_server/requirements.txt
+
+# 3.5) pip3를 pip로 사용할 수 있도록 심볼릭 링크 생성
+RUN ln -s $(which pip3) /usr/local/bin/pip
 
 # 4) 의존성 설치
-RUN pip install --no-cache-dir -r /flask_server/requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # 5) 소스코드 복사
 COPY flask_server/ /flask_server
