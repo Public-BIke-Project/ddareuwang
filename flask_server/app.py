@@ -1,3 +1,4 @@
+# This Python file uses the following encoding: utf-8
 # -*- coding: utf-8 -*-
 
 import os
@@ -127,7 +128,7 @@ def zone1_page():
             buttons_visible = True
 
         except Exception as e:
-            print(f"[ERROR] {str(e)}")
+            # print(f"[ERROR] {str(e)}")
             buttons_visible = False
             pass
 
@@ -231,7 +232,7 @@ def zone2_page():
             buttons_visible = True
 
         except Exception as e:
-            print(f"[ERROR] {str(e)}")
+            # print(f"[ERROR] {str(e)}")
             buttons_visible = False
             pass
 
@@ -268,7 +269,7 @@ def user_input_datetime():
 # zone별 대여소ID 불러오기
 def load_zone_id(zone):
     zone_id_list = []
-    zone_id_path = os.path.join(BASE_DIR, f'data/{zone}_station_id_list.txt')
+    zone_id_path = os.path.join(BASE_DIR, 'data/{}_station_id_list.txt'.format(zone))
     with open(zone_id_path, 'r') as fr:
         lines = fr.readlines()
         for line in lines:
@@ -332,16 +333,22 @@ class LSTM_Bidirectional:
         before168_DT_str = before168_DT.strftime('%Y-%m-%d %H:%M:%S')
         target_DT_str = target_DT.strftime('%Y-%m-%d %H:%M:%S')
 
-        query = f"""    
+        query = """
             SELECT 
                 * EXCEPT(time)
             FROM 
                 `{project_id}.{dataset_id}.{table_id}`
             WHERE 
-                time BETWEEN  '{before168_DT_str}' AND '{target_DT_str}'
+                time BETWEEN '{before168_DT_str}' AND '{target_DT_str}'
             ORDER BY 
                 year,month,day,hour
-        """
+        """.format(
+            project_id=project_id,
+            dataset_id=dataset_id,
+            table_id=table_id,
+            before168_DT_str=before168_DT_str,
+            target_DT_str=target_DT_str
+        )
 
         query_job = client.query(query)
         result = query_job.result()
@@ -451,13 +458,17 @@ def load_stock(zone, month, day, hour):
 
     # Bigquery에서 해당 기간 stock 내역 불러옴
     stock_list = []
-    query = f"""
-    SELECT * 
-    FROM `multi-final-project.Final_table_NURI.2023_available_stocks_fin` 
-    WHERE Date = '{input_date}'
-        AND Time = {input_time} 
-        AND Rental_location_ID IN {zone_id_tuple}
-    """
+    query = """
+        SELECT * 
+        FROM `multi-final-project.Final_table_NURI.2023_available_stocks_fin` 
+        WHERE Date = '{input_date}'
+            AND Time = {input_time} 
+            AND Rental_location_ID IN {zone_id_tuple}
+    """.format(
+        input_date=input_date,
+        input_time=input_time,
+        zone_id_tuple=zone_id_tuple
+    )
     query_job = client.query(query)
     results = query_job.result()
 
@@ -527,7 +538,7 @@ def make_supply_list(zone_id_list, station_status_dict):
         station_info = station_status_dict.get(station_id, None)
 
         if station_info is None:
-            print(f"ERROR! {station_id} : no data in station_status_dict")
+            # print(f"ERROR! {station_id} : no data in station_status_dict")
             continue
 
         # 1. deficient = 예상 수요보다 stock이 부족한 경우
@@ -544,7 +555,8 @@ def make_supply_list(zone_id_list, station_status_dict):
             supply_demand.append(int(station_info["stock"])) # abundant한 경우: stock 그대로 넣기
         
         else:  # 디버깅    
-            print(f"ERROR! {station_id} : no status info")
+            # print(f"ERROR! {station_id} : no status info")
+            pass
 
     # 2. supply_demand 총합에 알맞는 center 처리
     # 총합 >= 0 인 경우 : 위의 abundant로 이미 center 값 '0'으로 처리
@@ -559,7 +571,7 @@ def make_supply_list(zone_id_list, station_status_dict):
 
 def load_zone_distance(zone):
     zone_distance = []
-    zone_distance_path = os.path.join(BASE_DIR, f'./data/{zone}_distance.csv')
+    zone_distance_path = os.path.join(BASE_DIR, "./data/{}_distance.csv".format(zone))
     with open (zone_distance_path, 'r') as fr:
         lines = fr.readlines()
         for line in lines[1:]:
@@ -572,12 +584,12 @@ def load_zone_distance(zone):
 def station_index(supply_demand):
     station_index_data = {}
     for i, supply in enumerate(supply_demand):
-        station_index_data[f'{i}'] = supply
+        station_index_data["{}".format(i)] = supply
     return station_index_data
 
 def Bike_Redistribution(zone, supply_demand, zone_distance, station_status_dict):
     # 0. 인덱스(station_index)와 대여소 이름 매칭
-    zone_distance_path = os.path.join(BASE_DIR, f'./data/{zone}_distance.csv')
+    zone_distance_path = os.path.join(BASE_DIR, "./data/{}_distance.csv".format(zone))
     with open (zone_distance_path, 'r') as fr:
         next(fr)  # 첫 번째 행 건너뛰기
         stationID = [line.split(",")[0] for line in fr]
@@ -638,7 +650,8 @@ def Bike_Redistribution(zone, supply_demand, zone_distance, station_status_dict)
                 # print(f"2. From {from_name}({i}) to {to_name}({j}), move bikes: {x[i, j].varValue}") ## 디버깅 코드
                 cur_station_dict = station_status_dict.get(to_name)
                 if not cur_station_dict: # 해당 대여소는 방문하지 않음
-                    print(f"\n{to_name}: no visit!")
+                    # print(f"\n{to_name}: no visit!")
+                    pass
                 else:
                     stock = cur_station_dict["stock"]
                     results_dict["moves"].append({
@@ -660,7 +673,7 @@ def Bike_Redistribution(zone, supply_demand, zone_distance, station_status_dict)
     # (추가) x값을 result_dict에 같이 저장
     x_values_dict = {}
     for (i, j) in x.keys():
-        key_str = f"{i},{j}"
+        key_str = "{},{}".format(i, j)
         x_values_dict[key_str] = x[i, j].varValue
     results_dict["x_values"] = x_values_dict
     
@@ -696,19 +709,20 @@ def simplify_movements(results_dict, station_names_dict):
     final_dict = {}
     if simplified_flag:
         for (i, j), amount in simplified_moves.items():
-            from_name = station_names_dict.get(i, f"Unknown({i})")
-            to_name   = station_names_dict.get(j, f"Unknown({j})")
-            
-            key_str = f"{i},{j}"  # 문자열 키 : session 저장 때문에 형태를 문자열로
+            from_name = station_names_dict.get(i, "Unknown({})".format(i))
+            to_name   = station_names_dict.get(j, "Unknown({})".format(j))
+            key_str = "{},{}".format(i, j)
+  # 문자열 키 : session 저장 때문에 형태를 문자열로
             final_dict[key_str] = amount
 
-        print("[INFO] 후처리 진행됨!")
+        # print("[INFO] 후처리 진행됨!")
     else:
         # 후처리 불필요 → simplified_moves 그대로 반영
         for (i, j), amount in simplified_moves.items():
-            key_str = f"{i},{j}"
+            key_str = "{},{}".format(i, j)
             final_dict[key_str] = amount
-        print("[INFO] 후처리 불필요")
+
+        # print("[INFO] 후처리 불필요")
 
     session['final_dict'] = final_dict  # 이제 문자열 키를 사용하므로 에러가 안 남
 
@@ -742,8 +756,8 @@ def final_route(results_dict, final_dict, station_status_dict, station_LatLonNam
             status_hangeul = '충분'
         stock = station_status_dict.get(ToStation_ID, {}).get("stock")
 
-        if status is None or stock is None:
-            print("[ERROR] status == None or stock == None!")
+        # if status is None or stock is None: # 디버깅
+        #     print("[ERROR] status == None or stock == None!")
 
         move_info = {
             "visit_index": i+1,
