@@ -16,7 +16,7 @@ COPY flask_server/requirements.txt /flask_server/requirements.txt
 RUN ln -sf $(which pip3) /usr/local/bin/pip
 
 # 4) 의존성 설치
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r /flask_server/requirements.txt
 
 # 5) 소스코드 복사
 COPY flask_server/ /flask_server
