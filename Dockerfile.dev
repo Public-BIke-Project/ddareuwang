@@ -1,14 +1,19 @@
-# 1) pytorch cpu 버전
 FROM pytorch/manylinux-cpu:latest
 
-# 2) 컨테이너 내 작업 디렉터리 설정
+# 0) 시스템 빌드 도구 설치 (gcc, g++, make, cmake 등)
+RUN yum install -y gcc gcc-c++ make cmake
+
+# 0.5) pip, setuptools, wheel 업그레이드
+RUN pip3 install --upgrade pip setuptools wheel
+
+# 1) 작업 디렉토리 설정
 WORKDIR /flask_server
 
-# 3) requirements만 먼저 복사
+# 2) requirements 파일 복사
 COPY flask_server/requirements.txt /flask_server/requirements.txt
 
-# 3.5) pip3를 pip로 사용할 수 있도록 심볼릭 링크 생성
-RUN ln -s $(which pip3) /usr/local/bin/pip
+# 3) pip3를 pip로 사용할 수 있도록 심볼릭 링크 생성 (기존 링크가 있으면 덮어씌움)
+RUN ln -sf $(which pip3) /usr/local/bin/pip
 
 # 4) 의존성 설치
 RUN pip install --no-cache-dir -r requirements.txt
