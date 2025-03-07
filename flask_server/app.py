@@ -794,4 +794,4 @@ def final_output():
 
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 8080))
-    app.run(host="0.0.0.0", port=port) # 다른 PC에서도 접속 가능
+    app.run(host="0.0.0.0", port=port)

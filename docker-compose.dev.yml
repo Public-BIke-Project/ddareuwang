@@ -2,16 +2,19 @@ services:
   ddareuwang:       # 컨테이너 이름(서비스명) : 내가 임의로 지정 가능
     build:
       context: .
-      dockerfile: Dockerfile.dev
+      # dockerfile: Dockerfile.dev
 
-    image:  dev:v1.0.1  # 이미지 이름: 이 경우에는 '베이스 이미지 이름:버전'으로 사용함
-    container_name: ddareuwang-container.v.1.0.1
+    image:  DRW_dev:v1.0.2  # 이미지 이름: 이 경우에는 '베이스 이미지 이름:버전'으로 사용함
+    container_name: ddareuwang-container.v1.0.2
     ports:
       - "8080:8080"
     working_dir: /flask_server # 여기서 컨테이너 실행 시작
     volumes:
       - ./flask_server:/flask_server
     environment:
-      - FLASK_ENV=development #실제 운영(배포) 시에는 FLASK_ENV=production으로 
+      - FLASK_APP=app.py
+      - FLASK_ENV=development
+      - FLASK_RUN_HOST=0.0.0.0
+      - FLASK_RUN_PORT=8080
     restart: no # 실제 배포시에는  restart: unless-stopped
-    command: python app.py #flask_server가 working_dir이니까 바로 app.py 써도 됨
+    command: flask run
