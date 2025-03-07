@@ -4,8 +4,8 @@ services:
       context: .
       # dockerfile: Dockerfile.dev
 
-    image:  DRW_dev:v1.0.2  # 이미지 이름: 이 경우에는 '베이스 이미지 이름:버전'으로 사용함
-    container_name: ddareuwang-container.v1.0.2
+    image:  ddareuwang:v1.0.2  # 이미지 이름: 이 경우에는 '베이스 이미지 이름:버전'으로 사용함
+    container_name: ddareuwang-container
     ports:
       - "8080:8080"
     working_dir: /flask_server # 여기서 컨테이너 실행 시작

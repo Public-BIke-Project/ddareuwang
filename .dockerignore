@@ -10,7 +10,7 @@ secrets/
 
 # Docker -> 배포단계까지 그대로
 .dockerignore
-build.json
+docker-compose.dev.yml
 
 # 임시파일
 app_save.py

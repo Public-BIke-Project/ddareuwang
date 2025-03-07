@@ -8,8 +8,6 @@ __pycache__/
 secrets/
 
 # Docker
-# compose.yaml # 로컬 테스트 완료 후 compose.yaml을 ignore하고 build.json으로 배포
-build.json
 
 # 임시파일
 app_save.py
