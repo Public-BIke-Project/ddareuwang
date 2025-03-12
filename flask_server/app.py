@@ -18,8 +18,8 @@ import warnings
 
 # TOML 파일 및 상대 경로 설정
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))           
-secrets_path = os.path.join(BASE_DIR, "secrets/secrets.toml")
-secrets = toml.load(secrets_path)   
+secret_volume_path = "/flask_server/secrets/secret-volume/secrets"
+secrets = toml.load(secret_volume_path)
 
 # Flask
 app = Flask(__name__)
@@ -31,7 +31,7 @@ LSTM_model_path = os.path.join(BASE_DIR, "model/LSTM_Bidirectional_model_1202.pt
 
 # BigQuery 연결 설정
 project_id = secrets['bigquery']['project_id']
-GOOGLE_CREDENTIALS_FILE = os.path.join(BASE_DIR, secrets['bigquery']['credentials_file'])
+GOOGLE_CREDENTIALS_FILE = "/flask_server/secrets/multi-final-project-045b4ff593e4/multi-final-project-045b4ff593e4"
 table = secrets['bigquery']['table']
 
 # 환경 변수로 인증 정보 설정
