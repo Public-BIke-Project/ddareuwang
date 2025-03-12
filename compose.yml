@@ -7,7 +7,7 @@ spec:
   template:
     spec:
       containers:
-      - image: asia-northeast3-docker.pkg.dev/multi-final-project/ddarewang-registry/ddareuwang:v1.0.2
+      - image: asia-northeast3-docker.pkg.dev/multi-final-project/cloud-run-source-deploy/ddareuwang/ddareuwang:250312
         env:
         - name: FLASK_APP
           value: "app.py"
