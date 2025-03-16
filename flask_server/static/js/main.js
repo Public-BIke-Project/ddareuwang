@@ -375,8 +375,8 @@ function displayBikeStations() {
             // 따릉이 대여소 정보 가져오기
             // 두 개의 따릉이 대여소 정보 가져오기
             Promise.all([
-                fetch('http://openapi.seoul.go.kr:8088/787a4c4f41736d6133365464694c56/json/bikeList/1001/2000/').then(response => response.json()),
-                fetch('http://openapi.seoul.go.kr:8088/787a4c4f41736d6133365464694c56/json/bikeList/2001/3000/').then(response => response.json())
+                fetch('https://api.allorigins.win/raw?url=http://openapi.seoul.go.kr:8088/787a4c4f41736d6133365464694c56/json/bikeList/1001/2000/').then(response => response.json()),
+                fetch('https://api.allorigins.win/raw?url=http://openapi.seoul.go.kr:8088/787a4c4f41736d6133365464694c56/json/bikeList/2001/3000/').then(response => response.json())
             ])
             .then(results => {
                 // 두 개의 결과 데이터를 합침
