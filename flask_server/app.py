@@ -18,7 +18,7 @@ import warnings
 
 # TOML 파일 및 상대 경로 설정
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))           
-secret_volume_path = '/secret/secrets.toml'
+secret_volume_path = '/secret/secrets/app-config-toml'
 secrets = toml.load(secret_volume_path)
 
 # Flask
