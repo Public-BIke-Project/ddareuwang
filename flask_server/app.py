@@ -18,8 +18,27 @@ import warnings
 
 # TOML 파일 및 상대 경로 설정
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))           
-secret_volume_path = '/secret/secrets/app-config-toml'
-secrets = toml.load(secret_volume_path)
+
+# GCP Cloud Run 환경에서 마운트된 Secret 경로
+secrets_path = '/secret/secrets'
+
+# 파일 존재 여부 확인 및 로드
+try:
+    if os.path.exists(secrets_path):
+        secrets = toml.load(secrets_path)
+        print("Secret 파일을 성공적으로 로드했습니다.")
+    else:
+        # 로컬 개발 환경을 위한 대체 경로 설정
+        fallback_path = os.path.join(BASE_DIR, 'secret', 'secrets.toml')
+        if os.path.exists(fallback_path):
+            secrets = toml.load(fallback_path)
+            print("로컬 Secret 파일을 로드했습니다.")
+        else:
+            print("Secret 파일을 찾을 수 없습니다.")
+            secrets = {}  # 기본 빈 dictionary 설정
+except Exception as e:
+    print(f"Secret 파일 로드 중 오류 발생: {e}")
+    secrets = {}
 
 # Flask
 app = Flask(__name__)
