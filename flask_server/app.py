@@ -55,7 +55,21 @@ table = secrets['bigquery']['table']
 
 # 환경 변수로 인증 정보 설정
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = GOOGLE_CREDENTIALS_FILE
-client = bigquery.Client()
+# Secret 볼륨 마운트 경로 설정
+credentials_file = "/bigquery/multi-final-project-045b4ff593e4"
+
+# 인증 정보가 있는지 확인
+if os.path.exists(credentials_file):
+    # 서비스 계정 인증 정보 로드
+    credentials = service_account.Credentials.from_service_account_file(credentials_file)
+    
+    # 프로젝트 ID와 인증 정보로 BigQuery 클라이언트 생성
+    client = bigquery.Client(credentials=credentials, project=credentials.project_id)
+    print("서비스 계정 인증 정보를 사용하여 BigQuery 클라이언트가 초기화되었습니다.")
+else:
+    # 인증 파일이 없는 경우 기본 인증 사용 (Cloud Run의 기본 서비스 계정)
+    client = bigquery.Client()
+    print("기본 인증을 사용하여 BigQuery 클라이언트가 초기화되었습니다.")
 client._use_bqstorage_api = False  # BigQuery Storage API 비활성화
 warnings.filterwarnings("ignore", message="BigQuery Storage module not found")
 
