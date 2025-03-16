@@ -4,6 +4,7 @@
 import os
 import toml
 from google.cloud import bigquery
+from google.oauth2 import service_account
 from flask import Flask, render_template, request, jsonify, session
 import pandas as pd
 from datetime import datetime, timedelta
