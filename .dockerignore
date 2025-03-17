@@ -7,6 +7,7 @@ __pycache__/
 
 # Secrets
 secrets/
+docker-key.json
 
 # Docker -> 배포단계까지 그대로
 .dockerignore
