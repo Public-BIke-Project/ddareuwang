@@ -15,6 +15,6 @@
     - [📁app.py](https://github.com/Public-BIke-Project/ddareuwang/blob/main/flask_server/app.py)
       - 따릉이 이용객 데이터 베이스 및 관리권역 데이터와 연동 (Google BigQuery)  [👾YUNA AN](https://github.com/pompom33)
       - 따릉이 대여소별 수요 예측 모델 불러오기 [👾YUNA AN](https://github.com/pompom33) & [👾NURI PARK](https://github.com/Hello-Nuri)
-      - Travel Salseman Problem 기반 따릉이 재배치 경로 로직 구현 및 API 반환 [👾YUNA AN](https://github.com/pompom33)
+      - 정수 선형 계획법 기반 따릉이 재배치 경로 로직 구현 및 API 반환 [👾YUNA AN](https://github.com/pompom33)
 
 
